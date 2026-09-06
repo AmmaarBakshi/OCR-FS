@@ -1,0 +1,14 @@
+# Normalise line endings so an editor or a script that rewrites a file cannot
+# produce a whole-file diff. Text is stored LF in the repository; Git checks it
+# out unchanged, which is what every tool here (Python, Streamlit, pytest)
+# expects on both Windows and Linux.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.tif binary
+*.tiff binary
+*.pdf binary
+*.ico binary
