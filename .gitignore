@@ -39,15 +39,15 @@ secrets.toml
 .streamlit/secrets.toml
 
 # Runtime state written by the app (user settings, cached runs)
-runtime/
+/runtime/
 *.local.json
 app_settings.json
 
 # Documents processed by the user must never be committed
-uploads/
-documents/
-samples/private/
-exports/
+/uploads/
+/documents/
+/samples/private/
+/exports/
 *.pdf
 *.tiff
 *.tif
@@ -55,8 +55,8 @@ exports/
 !tests/fixtures/**
 
 # Model weights / large artefacts
-models/
-weights/
+/models/
+/weights/
 *.gguf
 *.safetensors
 *.onnx
@@ -66,7 +66,7 @@ weights/
 *.ckpt
 
 # Logs
-logs/
+/logs/
 *.log
 
 # OS / editor
