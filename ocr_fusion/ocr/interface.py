@@ -189,9 +189,16 @@ class OCRResult:
         *,
         remedy: str = "",
         duration_seconds: float = 0.0,
-        **metadata: Any,
+        metadata: dict[str, Any] | None = None,
     ) -> OCRResult:
-        """Build a failed result. Providers return this instead of raising."""
+        """Build a failed result. Providers return this instead of raising.
+
+        ``metadata`` is an explicit dict rather than ``**kwargs``: provider
+        metadata legitimately contains a ``provider_id`` key, and collecting it
+        as keyword arguments made that collide with the positional parameter,
+        raising TypeError on exactly the health-check failure path this method
+        exists to report.
+        """
         return cls(
             provider_id=provider_id,
             provider_name=provider_name,
@@ -199,7 +206,7 @@ class OCRResult:
             error=error,
             remedy=remedy,
             duration_seconds=duration_seconds,
-            metadata=metadata,
+            metadata=dict(metadata or {}),
         )
 
     @classmethod

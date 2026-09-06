@@ -120,7 +120,7 @@ class UnlimitedOCRProvider(OCRProvider):
                 health.message,
                 remedy=health.remedy,
                 duration_seconds=self._elapsed(started),
-                **self.get_metadata(),
+                metadata=self.get_metadata(),
             )
 
         prompt = self.settings.prompts.unlimited_ocr_task

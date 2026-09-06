@@ -47,6 +47,7 @@ include = ["ocr_fusion*"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q --strict-markers"
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: tests that need a live provider runtime (deselect with -m 'not integration')",
     "slow: tests that run real model inference",
