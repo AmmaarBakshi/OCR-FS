@@ -1,0 +1,78 @@
+# ---------------------------------------------------------------------------
+# OCR Fusion Studio - ignore rules
+# ---------------------------------------------------------------------------
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+secrets.toml
+.streamlit/secrets.toml
+
+# Runtime state written by the app (user settings, cached runs)
+runtime/
+*.local.json
+app_settings.json
+
+# Documents processed by the user must never be committed
+uploads/
+documents/
+samples/private/
+exports/
+*.pdf
+*.tiff
+*.tif
+!docs/**/*.pdf
+!tests/fixtures/**
+
+# Model weights / large artefacts
+models/
+weights/
+*.gguf
+*.safetensors
+*.onnx
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# Logs
+logs/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
