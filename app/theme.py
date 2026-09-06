@@ -2,8 +2,7 @@
 
 Streamlit's defaults read as a developer tool, and the brief is a product a
 non-technical client can be shown (spec s3). So the app hides Streamlit's own
-chrome and renders its main surfaces as self-contained HTML cards with their
-own class names.
+chrome and renders its main surfaces as cards carrying our own class names.
 
 Targeting our own classes rather than Streamlit's generated ones matters: the
 internal class names change between releases, so styling built on them breaks
@@ -11,6 +10,9 @@ on upgrade. Only a handful of stable ``data-testid`` hooks are used.
 """
 
 from __future__ import annotations
+
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import streamlit as st
 
@@ -85,18 +87,32 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 .ofs-title { font-size: 25px; font-weight: 680; color: var(--ink); line-height: 1.15; letter-spacing: -0.03em; }
 .ofs-subtitle { font-size: 13.5px; color: var(--ink-faint); margin-top: 1px; }
 
-/* ---------- cards ---------- */
-.ofs-card {
+/* ---------- cards ----------
+   A card must contain real Streamlit widgets, so it is a st.container()
+   rather than a hand-written <div>: separate st.markdown calls each render into
+   their own element, so an opening tag is closed immediately and nothing nests
+   inside it.
+
+   Streamlit gives every container the same data-testid, so the card is
+   identified by a marker element that card() emits as its first child. The
+   :has() selector then styles only the wrapper that directly contains it. */
+[data-testid="stLayoutWrapper"]:has(> div > [data-testid="stElementContainer"] .ofs-card-tag) {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow);
-  margin-bottom: 16px;
+  border-radius: var(--radius); padding: 18px 22px;
+  box-shadow: var(--shadow); margin-bottom: 16px;
 }
-.ofs-card-head {
-  display: flex; justify-content: space-between; align-items: baseline;
-  gap: 12px; margin-bottom: 14px;
+/* Streamlit also styles the vertical block inside a container. Left alone it
+   draws a second, nested frame inside the card, so it is flattened here. */
+[data-testid="stLayoutWrapper"]:has(> div > [data-testid="stElementContainer"] .ofs-card-tag)
+  > [data-testid="stVerticalBlock"] {
+  border: none !important; border-radius: 0 !important;
+  padding: 0 !important; background: transparent !important;
 }
+.ofs-card-tag { display: none; }
 .ofs-card-title { font-size: 12px; font-weight: 650; text-transform: uppercase;
-  letter-spacing: .09em; color: var(--ink-faint); }
+  letter-spacing: .09em; color: var(--ink-faint); display: block; margin-bottom: 2px; }
+/* The marker's own element container would otherwise add a blank row. */
+[data-testid="stElementContainer"]:has(.ofs-card-tag:only-child) { display: none; }
 
 /* ---------- pipeline visualisation ---------- */
 .ofs-pipe { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
@@ -258,23 +274,30 @@ def apply_theme() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
 
 
-def card_open(title: str = "", right_html: str = "") -> None:
-    """Open a styled card. Must be paired with :func:`card_close`.
+@contextmanager
+def card(title: str = "") -> Iterator[None]:
+    """A styled card that real Streamlit widgets can live inside.
 
-    Streamlit widgets rendered between the two calls appear inside the card,
-    which is not possible with a single self-closing HTML block.
+    Used as a context manager::
+
+        with card("Results"):
+            st.write("anything, including widgets")
+
+    Implemented as a container plus a marker element, because HTML written with
+    ``st.markdown`` cannot wrap subsequent widgets - each markdown call renders
+    into its own element, so an unclosed ``<div>`` is closed immediately and
+    nothing nests inside it.
     """
-    head = ""
-    if title or right_html:
-        head = (
-            '<div class="ofs-card-head">'
-            f'<span class="ofs-card-title">{title}</span>{right_html}</div>'
-        )
-    st.markdown(f'<div class="ofs-card">{head}', unsafe_allow_html=True)
-
-
-def card_close() -> None:
-    st.markdown("</div>", unsafe_allow_html=True)
+    # border=False: the card's frame comes entirely from our own CSS below.
+    # Streamlit's built-in border would draw a second, nested box inside it.
+    container = st.container(border=False)
+    with container:
+        st.markdown('<span class="ofs-card-tag"></span>', unsafe_allow_html=True)
+        if title:
+            st.markdown(
+                f'<span class="ofs-card-title">{title}</span>', unsafe_allow_html=True
+            )
+        yield
 
 
 def badge(text: str, kind: str = "neutral") -> str:
@@ -304,8 +327,7 @@ __all__ = [
     "PALETTE",
     "apply_theme",
     "badge",
-    "card_close",
-    "card_open",
+    "card",
     "empty_state",
     "notice",
 ]

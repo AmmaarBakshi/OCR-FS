@@ -34,7 +34,7 @@ from app.components import (  # noqa: E402
     settings_page,
     upload,
 )
-from app.theme import apply_theme, badge, card_close, card_open, empty_state, notice  # noqa: E402
+from app.theme import apply_theme, badge, card, empty_state, notice  # noqa: E402
 from ocr_fusion.documents.models import Document  # noqa: E402
 from ocr_fusion.ocr.registry import default_registry  # noqa: E402
 from ocr_fusion.pipeline import build_pipeline  # noqa: E402
@@ -188,20 +188,18 @@ def _render_intake(settings) -> None:
     """First-run view: upload area plus what is about to happen (spec s15)."""
     upload.render_error()
 
-    card_open("Upload a document")
-    upload.render()
-    card_close()
+    with card("Upload a document"):
+        upload.render()
 
-    card_open("How it works")
-    pipeline_view.render_placeholder(_planned_stage_labels(settings))
-    st.markdown(
-        '<div style="margin-top:14px;font-size:13px;color:var(--ink-soft);'
-        'line-height:1.65;">Each engine transcribes the document independently. '
-        "Their results are compared side by side, and a single combined result "
-        "is produced from both. Every stage reports how long it took.</div>",
-        unsafe_allow_html=True,
-    )
-    card_close()
+    with card("How it works"):
+        pipeline_view.render_placeholder(_planned_stage_labels(settings))
+        st.markdown(
+            '<div style="margin-top:14px;font-size:13px;color:var(--ink-soft);'
+            'line-height:1.65;">Each engine transcribes the document independently. '
+            "Their results are compared side by side, and a single combined result "
+            "is produced from both. Every stage reports how long it took.</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _planned_stage_labels(settings) -> list[str]:
@@ -222,38 +220,35 @@ def _planned_stage_labels(settings) -> list[str]:
 
 def _render_run_bar(document: Document, settings) -> None:
     """Document summary and the Run OCR control."""
-    card_open()
-    left, right = st.columns([3, 1])
-    with left:
-        st.markdown(
-            f'<div style="font-size:15px;font-weight:650;color:var(--ink);'
-            f'overflow-wrap:anywhere;">{document.filename}</div>'
-            f'<div style="font-size:12.5px;color:var(--ink-faint);margin-top:3px;">'
-            f'{document.page_count} page{"s" if document.page_count != 1 else ""} · '
-            f"{document.kind.value.upper()}</div>",
-            unsafe_allow_html=True,
-        )
-    with right:
-        if st.button("Run OCR", type="primary", use_container_width=True):
-            _execute(document, settings)
-        if st.button("Choose another file", use_container_width=True):
-            state.reset_run()
-            st.session_state[state.KEY_UPLOAD_TOKEN] = None
-            st.rerun()
-    card_close()
+    with card():
+        left, right = st.columns([3, 1])
+        with left:
+            st.markdown(
+                f'<div style="font-size:15px;font-weight:650;color:var(--ink);'
+                f'overflow-wrap:anywhere;">{document.filename}</div>'
+                f'<div style="font-size:12.5px;color:var(--ink-faint);margin-top:3px;">'
+                f'{document.page_count} page{"s" if document.page_count != 1 else ""} · '
+                f"{document.kind.value.upper()}</div>",
+                unsafe_allow_html=True,
+            )
+        with right:
+            if st.button("Run OCR", type="primary", use_container_width=True):
+                _execute(document, settings)
+            if st.button("Choose another file", use_container_width=True):
+                state.reset_run()
+                st.session_state[state.KEY_UPLOAD_TOKEN] = None
+                st.rerun()
 
 
 def _render_pending(settings) -> None:
     """Between upload and run: preview on the left, waiting pipeline on the right."""
     left, right = st.columns([1, 1], gap="large")
     with left:
-        card_open("Document")
-        document_preview.render(state.document())
-        card_close()
+        with card("Document"):
+            document_preview.render(state.document())
     with right:
-        card_open("Pipeline")
-        pipeline_view.render_placeholder(_planned_stage_labels(settings))
-        card_close()
+        with card("Pipeline"):
+            pipeline_view.render_placeholder(_planned_stage_labels(settings))
         empty_state(
             "▶",
             "Ready when you are",
@@ -272,10 +267,9 @@ def _execute(document: Document, settings) -> None:
         )
         return
 
-    card_open("Running")
-    stage_slot = st.empty()
-    status_slot = st.empty()
-    card_close()
+    with card("Running"):
+        stage_slot = st.empty()
+        status_slot = st.empty()
 
     def on_event(event) -> None:
         """Redraw the pipeline as each stage reports in."""
@@ -308,10 +302,9 @@ def _execute(document: Document, settings) -> None:
 
 
 def _render_results(result, settings) -> None:
-    card_open("Pipeline")
-    pipeline_view.render_stage_row(result.stages)
-    pipeline_view.render_total(result.total_duration_seconds, result.stages)
-    card_close()
+    with card("Pipeline"):
+        pipeline_view.render_stage_row(result.stages)
+        pipeline_view.render_total(result.total_duration_seconds, result.stages)
 
     if not result.succeeded:
         notice(
@@ -323,18 +316,15 @@ def _render_results(result, settings) -> None:
 
     left, right = st.columns([1, 1.25], gap="large")
     with left:
-        card_open("Document")
-        document_preview.render(result.document)
-        card_close()
+        with card("Document"):
+            document_preview.render(result.document)
     with right:
-        card_open("Results")
-        results.render(result, settings)
-        card_close()
+        with card("Results"):
+            results.render(result, settings)
 
     if state.developer_mode():
-        card_open("Metrics")
-        metrics_view.render_totals(result, settings)
-        card_close()
+        with card("Metrics"):
+            metrics_view.render_totals(result, settings)
 
         metrics_view.render_technical_details(result, settings)
 
