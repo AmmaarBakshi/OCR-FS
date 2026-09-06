@@ -1,0 +1,24 @@
+# Base theme. app/theme.py layers the product styling on top of this; these
+# values only set what Streamlit paints before our CSS loads, which prevents a
+# flash of default blue on first render.
+[theme]
+primaryColor = "#4338ca"
+backgroundColor = "#f6f7fb"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#12141c"
+font = "sans serif"
+
+[server]
+# Documents may be confidential: never collect usage statistics, and allow a
+# reasonably large upload since scanned PDFs are big.
+maxUploadSize = 50
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# A stack trace in front of a client is the failure mode this app exists to
+# avoid; errors are surfaced as written explanations instead.
+showErrorDetails = false
+toolbarMode = "minimal"
