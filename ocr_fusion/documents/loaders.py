@@ -278,8 +278,8 @@ def load_document_bytes(
     if loader is None:
         suffix = Path(filename).suffix or "(no extension)"
         raise UnsupportedFormatError(
-            f"{suffix} files are not supported. Upload a PNG, JPG, WEBP, "
-            "TIFF or PDF."
+            f"{suffix} files are not supported. Supported types: PNG, JPG, "
+            "WEBP, TIFF and PDF."
         )
     return loader(data, filename or f"document.{kind.value}", settings)
 
