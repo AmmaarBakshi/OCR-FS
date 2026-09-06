@@ -32,7 +32,12 @@ Output the transcription only.\
 """
 
 QWEN_USER_PROMPT = """\
-Transcribe all text visible in this image.
+Transcribe every piece of text visible in this image, working from the top of
+the page down to the bottom.
+
+Include the header, any company name or logo text, addresses, reference and
+document numbers, dates, the body or table content, totals, and any footer or
+small print. Do not stop after the main table.
 
 Return plain text with Markdown used only where it reflects the document's own
 structure (headings, lists, tables). Do not wrap the whole answer in a code

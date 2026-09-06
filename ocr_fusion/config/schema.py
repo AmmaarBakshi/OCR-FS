@@ -124,7 +124,10 @@ class QwenSettings(BaseModel):
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     top_p: float = Field(default=0.9, ge=0.0, le=1.0)
     max_tokens: int = Field(default=4096, gt=0)
-    timeout_seconds: float = Field(default=300.0, gt=0)
+    timeout_seconds: float = Field(default=600.0, gt=0)
+    """Generous by default: a cold 3B VLM load on CPU can exceed five
+    minutes before the first token, and a timeout there wastes the load."""
+
     retry_count: int = Field(default=1, ge=0, le=5)
     retry_backoff_seconds: float = Field(default=2.0, ge=0)
     keep_alive: str = "5m"
@@ -251,7 +254,11 @@ class DocumentSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    pdf_render_dpi: int = Field(default=200, ge=72, le=600)
+    pdf_render_dpi: int = Field(default=150, ge=72, le=600)
+    """150 DPI keeps a rendered A4 page near 1240x1755, which transcribes
+    accurately while roughly halving image tokens against 200 DPI - the
+    difference between a tolerable and a painful CPU demo."""
+
     max_image_dimension: int = Field(default=2048, ge=256)
     """Longest edge, in pixels. Larger pages are downscaled before inference."""
 
