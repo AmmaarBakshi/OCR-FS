@@ -22,7 +22,7 @@ from typing import Any
 from ocr_fusion.config.schema import AppSettings, FusionStrategy
 from ocr_fusion.ocr.interface import OCRResult
 from ocr_fusion.ocr.ollama_client import OllamaClient, OllamaError
-from ocr_fusion.pipeline.comparison import DiffKind, compare_texts
+from ocr_fusion.pipeline.comparison import DiffKind, compare_texts, normalise_line
 
 logger = logging.getLogger(__name__)
 
@@ -158,32 +158,75 @@ def fuse_line_vote(results: list[OCRResult], settings: AppSettings) -> FusionRes
         engine_b=second.provider_name,
     )
 
+    # Lines each engine produced anywhere in its output. Used to tell a line
+    # that is genuinely unique to one engine from one both engines produced but
+    # placed differently - the alignment is order-preserving, so it cannot match
+    # the second kind and would otherwise emit it twice.
+    lines_in_a = {normalise_line(line) for line in first.text.splitlines() if line.strip()}
+    lines_in_b = {normalise_line(line) for line in second.text.splitlines() if line.strip()}
+
     merged: list[str] = []
-    agreed = resolved = kept_a = kept_b = 0
+    emitted: set[str] = set()
+    agreed = resolved = kept_a = kept_b = duplicates = 0
+
+    def emit(text: str) -> None:
+        merged.append(text)
+        emitted.add(normalise_line(text))
+
     for line in comparison.lines:
         if line.kind is DiffKind.EQUAL:
-            merged.append(line.text_a)
+            emit(line.text_a)
             agreed += 1
         elif line.kind is DiffKind.CHANGED:
-            merged.append(_pick_line(line.text_a, line.text_b))
+            chosen = _pick_line(line.text_a, line.text_b)
+            emit(chosen)
+            emitted.add(normalise_line(line.text_a))
+            emitted.add(normalise_line(line.text_b))
             resolved += 1
         elif line.kind is DiffKind.ONLY_A:
-            merged.append(line.text_a)
+            if _is_repositioned_duplicate(line.text_a, lines_in_b, emitted):
+                duplicates += 1
+                continue
+            emit(line.text_a)
             kept_a += 1
         else:
-            merged.append(line.text_b)
+            if _is_repositioned_duplicate(line.text_b, lines_in_a, emitted):
+                duplicates += 1
+                continue
+            emit(line.text_b)
             kept_b += 1
 
     detail = (
         f"{agreed} lines agreed, {resolved} reconciled, "
         f"{kept_a + kept_b} kept from a single engine."
     )
+    if duplicates:
+        detail += (
+            f" {duplicates} line{'s' if duplicates != 1 else ''} both engines "
+            "placed differently were merged rather than repeated."
+        )
     return FusionResult(
         text="\n".join(merged).strip(),
         strategy="line_vote",
         sources=[first.provider_name, second.provider_name],
         detail=detail,
     )
+
+
+def _is_repositioned_duplicate(
+    text: str, other_engine_lines: set[str], emitted: set[str]
+) -> bool:
+    """Whether a one-sided line is content already merged from the other engine.
+
+    True only when both conditions hold: the other engine also produced this
+    line somewhere, and it is already in the merged output. A line genuinely
+    unique to one engine is always kept, and a line one engine legitimately
+    repeats is only dropped when the other engine produced it too - a repeated
+    table row, where losing the duplicate costs little and both raw outputs
+    remain available.
+    """
+    key = normalise_line(text)
+    return bool(key) and key in emitted and key in other_engine_lines
 
 
 def _pick_line(left: str, right: str) -> str:
