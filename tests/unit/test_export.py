@@ -235,6 +235,66 @@ class TestXml:
         assert root.find("./pipeline/succeeded").text in {"true", "false"}
 
 
+class TestHtml:
+    def test_is_a_complete_document(self, run_result, settings):
+        page = export(run_result, settings, OutputFormat.HTML)
+        assert page.startswith("<!doctype html>")
+        assert page.rstrip().endswith("</html>")
+
+    def test_contains_the_final_text(self, run_result, settings):
+        assert "ACME LOGISTICS LTD" in export(run_result, settings, OutputFormat.HTML)
+
+    def test_transcribed_markup_cannot_escape_into_the_page(
+        self, settings, single_page_document
+    ):
+        """A document containing markup is data, never part of the report."""
+        engine = OCRResult(
+            provider_id="qwen_vl",
+            provider_name="Qwen2.5-VL",
+            pages=[PageResult(1, "<script>alert(1)</script> & <b>bold</b>")],
+        )
+        run = PipelineResult(document=single_page_document, engine_results=[engine])
+        page = export(run, settings, OutputFormat.HTML)
+        assert "<script>" not in page
+        assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+
+    def test_a_hostile_filename_is_escaped_in_the_title(self, settings, run_result):
+        run_result.document.filename = "<img src=x onerror=alert(1)>.pdf"
+        page = export(run_result, settings, OutputFormat.HTML)
+        assert "<img src=x" not in page
+
+    def test_makes_no_external_request(self, run_result, settings):
+        """A confidential document must not phone home when the file is opened."""
+        page = export(run_result, settings, OutputFormat.HTML)
+        for token in ("http://", "https://", "<script", "<link", "<iframe"):
+            assert token not in page.lower()
+
+    def test_reports_na_for_missing_metrics(self, run_result, settings):
+        page = export(run_result, settings, OutputFormat.HTML)
+        assert "N/A" in page
+
+    def test_failed_engine_is_explained(self, settings, single_page_document):
+        failed = PipelineResult(
+            document=single_page_document,
+            engine_results=[
+                OCRResult(
+                    provider_id="qwen_vl",
+                    provider_name="Qwen2.5-VL",
+                    status=OCRStatus.FAILED,
+                    error="Ollama is not running",
+                )
+            ],
+        )
+        assert "Ollama is not running" in export(failed, settings, OutputFormat.HTML)
+
+    def test_sections_can_be_hidden(self, run_result, settings):
+        settings.output.show_comparison = False
+        settings.output.show_raw_results = False
+        page = export(run_result, settings, OutputFormat.HTML)
+        assert "<h2>Comparison</h2>" not in page
+        assert "<h2>Engine outputs</h2>" not in page
+
+
 class TestCsv:
     def _rows(self, run_result, settings):
         return list(csv.DictReader(io.StringIO(export(run_result, settings, OutputFormat.CSV))))

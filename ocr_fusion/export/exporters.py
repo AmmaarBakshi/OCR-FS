@@ -20,6 +20,7 @@ import json
 import re
 from collections.abc import Callable
 from datetime import datetime
+from html import escape
 from typing import Any
 from xml.etree import ElementTree as ET
 
@@ -381,6 +382,175 @@ def export_xml(result: PipelineResult, settings: AppSettings) -> str:
 
 
 
+#: Styling for the HTML export. Inlined rather than linked so the file stays
+#: readable after it has been emailed, moved or archived on its own.
+_HTML_STYLE = """
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.65 -apple-system, "Segoe UI", Roboto, sans-serif;
+         max-width: 880px; margin: 0 auto; padding: 40px 24px; color: #12141c;
+         background: #ffffff; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 34px 0 10px; padding-top: 18px;
+       border-top: 1px solid #e4e6ef; }
+  h3 { font-size: 14.5px; margin: 22px 0 8px; }
+  .meta { color: #5b6072; font-size: 13px; margin-bottom: 8px; }
+  .meta span + span::before { content: " \00B7 "; }
+  .text { white-space: pre-wrap; word-wrap: break-word; font-family: ui-monospace,
+          "Cascadia Mono", Consolas, monospace; font-size: 13px; background: #f6f7fb;
+          border: 1px solid #e4e6ef; border-radius: 8px; padding: 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #e4e6ef;
+           vertical-align: top; }
+  th { color: #5b6072; font-weight: 600; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px;
+       font-size: 13px; margin: 0 0 12px; }
+  dt { color: #5b6072; }
+  dd { margin: 0; }
+  .failed { color: #b4232c; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #12141c; color: #e8eaf2; }
+    h2 { border-color: #2a2e3f; }
+    .text { background: #1a1d29; border-color: #2a2e3f; }
+    th, td { border-color: #2a2e3f; }
+    .meta, th, dt { color: #9aa0b5; }
+  }
+"""
+
+
+def _html_text_block(text: str) -> str:
+    return f'<div class="text">{escape(text)}</div>' if text else "<p><em>No text.</em></p>"
+
+
+def _html_definitions(pairs: list[tuple[str, str]]) -> str:
+    if not pairs:
+        return ""
+    items = "".join(
+        f"<dt>{escape(term)}</dt><dd>{escape(value)}</dd>" for term, value in pairs
+    )
+    return f"<dl>{items}</dl>"
+
+
+def _html_engine_metrics(engine, settings: AppSettings) -> list[tuple[str, str]]:
+    """The same metric set the Markdown report lists, as term/value pairs."""
+    output = settings.output
+    pairs: list[tuple[str, str]] = [("Status", engine.status.value)]
+    if output.show_model_name and engine.model_name:
+        pairs.append(("Model", engine.model_name))
+    if engine.backend:
+        pairs.append(("Backend", engine.backend))
+    if output.show_processing_time:
+        pairs.append(("Time", f"{engine.duration_seconds:.2f}s"))
+    if output.show_token_usage:
+        usage = engine.tokens
+        pairs.append(("Input tokens", _metric(usage.input_tokens)))
+        pairs.append(("Output tokens", _metric(usage.output_tokens)))
+        pairs.append(("Tokens/second", _metric(engine.tokens_per_second)))
+    if output.show_character_count:
+        pairs.append(("Characters", f"{engine.character_count:,}"))
+    if output.show_word_count:
+        pairs.append(("Words", f"{engine.word_count:,}"))
+    return pairs
+
+
+def export_html(result: PipelineResult, settings: AppSettings) -> str:
+    """A self-contained report page.
+
+    Everything is inlined - no stylesheet, no script, no external request - so
+    the file renders identically offline and carries no tracking surface for a
+    document that may be confidential.
+    """
+    output = settings.output
+    document = result.document
+    parts: list[str] = []
+
+    meta: list[str] = [f"{document.page_count} page(s)"]
+    if output.show_processing_time:
+        meta.append(f"{result.total_duration_seconds:.2f}s total")
+    if output.show_engine_name:
+        names = ", ".join(r.provider_name for r in result.engine_results) or "none"
+        meta.append(f"Engines: {names}")
+    if result.fusion:
+        meta.append(f"Fusion: {result.fusion.strategy}")
+    meta.append(f"Generated {datetime.now():%Y-%m-%d %H:%M:%S}")
+
+    parts.append(f"<h1>{escape(document.filename)}</h1>")
+    parts.append(
+        '<div class="meta">'
+        + "".join(f"<span>{escape(entry)}</span>" for entry in meta)
+        + "</div>"
+    )
+
+    if output.show_extracted_text:
+        parts.append("<h2>Final result</h2>")
+        parts.append(_html_text_block(result.final_text))
+        counts: list[str] = []
+        if output.show_character_count:
+            counts.append(f"{len(result.final_text):,} characters")
+        if output.show_word_count:
+            counts.append(f"{len(result.final_text.split()):,} words")
+        if counts:
+            parts.append(f'<div class="meta">{escape(" / ".join(counts))}</div>')
+
+    if output.show_comparison and result.comparison is not None:
+        parts.extend(_html_comparison(result.comparison))
+
+    if output.show_raw_results:
+        parts.append("<h2>Engine outputs</h2>")
+        for engine in result.engine_results:
+            parts.append(f"<h3>{escape(engine.provider_name)}</h3>")
+            parts.append(_html_definitions(_html_engine_metrics(engine, settings)))
+            if engine.succeeded and engine.text:
+                parts.append(_html_text_block(engine.text))
+            else:
+                reason = engine.error or "unknown error"
+                parts.append(f'<p class="failed">Failed: {escape(reason)}</p>')
+
+    if output.show_processing_logs and result.log is not None:
+        parts.append("<h2>Processing log</h2>")
+        parts.append(_html_text_block(result.log.as_text()))
+
+    body = "\n".join(parts)
+    return (
+        "<!doctype html>\n"
+        '<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<title>OCR result - {escape(document.filename)}</title>\n"
+        f"<style>{_HTML_STYLE}</style>\n</head>\n<body>\n{body}\n</body>\n</html>\n"
+    )
+
+
+def _html_comparison(comparison) -> list[str]:
+    """The comparison section: agreement figures, then numeric disagreements."""
+    parts = [
+        "<h2>Comparison</h2>",
+        _html_definitions(
+            [
+                ("Agreement", f"{comparison.agreement_percent}%"),
+                ("Lines", str(comparison.total_lines)),
+                ("Identical", str(comparison.equal_lines)),
+                ("Differing", str(comparison.differing_lines)),
+            ]
+        ),
+    ]
+    conflicts = comparison.numeric_conflicts
+    if not conflicts:
+        return parts
+
+    rows = "".join(
+        "<tr><td>{}</td><td>{}</td></tr>".format(
+            escape(conflict["text_a"]), escape(conflict["text_b"])
+        )
+        for conflict in conflicts[:25]
+    )
+    parts.append(f"<h3>Numeric disagreements ({len(conflicts)})</h3>")
+    parts.append(
+        f"<table><thead><tr><th>{escape(comparison.engine_a)}</th>"
+        f"<th>{escape(comparison.engine_b)}</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table>"
+    )
+    return parts
+
+
 #: Exporter registry. Add a format by registering a callable here.
 EXPORTERS: dict[OutputFormat, Callable[[PipelineResult, AppSettings], str]] = {
     OutputFormat.TXT: export_txt,
@@ -388,6 +558,7 @@ EXPORTERS: dict[OutputFormat, Callable[[PipelineResult, AppSettings], str]] = {
     OutputFormat.JSON: export_json,
     OutputFormat.CSV: export_csv,
     OutputFormat.XML: export_xml,
+    OutputFormat.HTML: export_html,
 }
 
 MIME_TYPES: dict[OutputFormat, str] = {
@@ -396,6 +567,7 @@ MIME_TYPES: dict[OutputFormat, str] = {
     OutputFormat.JSON: "application/json",
     OutputFormat.CSV: "text/csv",
     OutputFormat.XML: "application/xml",
+    OutputFormat.HTML: "text/html",
 }
 
 
@@ -422,6 +594,7 @@ __all__ = [
     "MIME_TYPES",
     "export",
     "export_csv",
+    "export_html",
     "export_filename",
     "export_json",
     "export_markdown",

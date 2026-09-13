@@ -1,4 +1,4 @@
-"""Export pipeline results to TXT, Markdown, JSON, CSV and XML."""
+"""Export pipeline results to TXT, Markdown, JSON, CSV, XML and HTML."""
 
 from ocr_fusion.export.exporters import (
     EXPORTERS,
@@ -6,6 +6,7 @@ from ocr_fusion.export.exporters import (
     export,
     export_csv,
     export_filename,
+    export_html,
     export_json,
     export_markdown,
     export_txt,
@@ -18,6 +19,7 @@ __all__ = [
     "export",
     "export_csv",
     "export_filename",
+    "export_html",
     "export_json",
     "export_markdown",
     "export_txt",
