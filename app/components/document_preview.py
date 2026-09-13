@@ -92,21 +92,28 @@ def _render_page_nav(document: Document, page_number: int) -> None:
 
 
 def _render_zoom_controls() -> None:
+    """Zoom picker.
+
+    A segmented control rather than a horizontal radio: five radio dials with
+    their labels do not fit the preview column, so the last step wrapped onto a
+    line of its own. Segments share the width instead of overflowing it.
+    """
     current = state.zoom()
     labels = [f"{int(step * 100)}%" for step in _ZOOM_STEPS]
-    try:
-        index = _ZOOM_STEPS.index(current)
-    except ValueError:
-        index = _ZOOM_STEPS.index(1.0)
+    if current not in _ZOOM_STEPS:
+        current = 1.0
 
-    chosen = st.radio(
+    chosen = st.segmented_control(
         "Zoom",
         options=labels,
-        index=index,
-        horizontal=True,
+        default=f"{int(current * 100)}%",
         key="ofs_zoom_radio",
         label_visibility="collapsed",
     )
+    # Clicking the active segment clears it; keep the current zoom rather than
+    # snapping the preview back to 100%.
+    if chosen is None:
+        return
     new_zoom = _ZOOM_STEPS[labels.index(chosen)]
     if new_zoom != current:
         state.set_zoom(new_zoom)
