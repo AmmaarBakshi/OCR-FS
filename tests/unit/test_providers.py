@@ -47,7 +47,11 @@ class StubOllama:
         return self._models
 
     def has_model(self, model):
-        return model in self._models or f"{model}:latest" in self._models
+        # Delegates to list_models like the real client, so an unreachable
+        # server raises here instead of quietly reporting "not pulled" - the
+        # difference between "start Ollama" and "pull a model" as a remedy.
+        available = self.list_models()
+        return model in available or f"{model}:latest" in available
 
     def show_model(self, model):
         return {"details": {"family": "test", "parameter_size": "3B"}}
