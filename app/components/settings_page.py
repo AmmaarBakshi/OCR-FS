@@ -18,6 +18,7 @@ from app.theme import badge, notice
 from ocr_fusion.config import AppSettings, load_settings, save_settings
 from ocr_fusion.config.prompts import DEFAULT_PROMPTS
 from ocr_fusion.config.schema import (
+    DeliveryMode,
     FusionStrategy,
     OutputFormat,
     Theme,
@@ -425,9 +426,81 @@ def _pipeline(draft: AppSettings) -> None:
         )
 
 
+_DELIVERY_LABELS = {
+    DeliveryMode.ON_SITE: "On site - read the result here",
+    DeliveryMode.OFF_SITE: "Off site - hand it over as a file",
+}
+
+_FORMAT_LABELS = {
+    OutputFormat.PDF: "PDF - a report anyone can open",
+    OutputFormat.MARKDOWN: "Markdown - a readable report",
+    OutputFormat.HTML: "HTML - a self-contained web page",
+    OutputFormat.TXT: "Plain text - the transcription only",
+    OutputFormat.JSON: "JSON - the full structured data",
+    OutputFormat.XML: "XML - the same data as XML",
+    OutputFormat.CSV: "CSV - one row per page, per engine",
+}
+
+
+def _format_choice(
+    label: str, current: OutputFormat, key: str, help_text: str = ""
+) -> OutputFormat:
+    """A format picker labelled in terms of what the file is for."""
+    formats = list(OutputFormat)
+    return formats[
+        st.selectbox(
+            label,
+            range(len(formats)),
+            index=formats.index(current),
+            format_func=lambda index: _FORMAT_LABELS[formats[index]],
+            key=key,
+            help=help_text or None,
+        )
+    ]
+
+
 def _output(draft: AppSettings) -> None:
     output = draft.output
-    st.caption("Choose what appears in the results and in exported files.")
+
+    st.markdown("#### How you get the result")
+    modes = list(DeliveryMode)
+    output.delivery_mode = modes[
+        st.radio(
+            "Delivery",
+            range(len(modes)),
+            index=modes.index(output.delivery_mode),
+            format_func=lambda index: _DELIVERY_LABELS[modes[index]],
+            key="ofs_delivery_mode",
+            label_visibility="collapsed",
+        )
+    ]
+
+    if output.delivery_mode is DeliveryMode.ON_SITE:
+        st.caption(
+            "The transcription is shown in the page, and you can still download "
+            "it in any format from the Export tab."
+        )
+    else:
+        output.download_format = _format_choice(
+            "File type",
+            output.download_format,
+            key="ofs_download_format",
+            help_text=(
+                "The file the results panel offers first. Every other format "
+                "stays available in the Export tab."
+            ),
+        )
+        st.caption(
+            "The results panel leads with this file instead of printing the "
+            "transcription."
+        )
+
+    st.divider()
+    st.markdown("#### What the result includes")
+    st.caption(
+        "These apply to what you see and to exported files alike, so anything "
+        "switched off here is left out of the file as well."
+    )
     fields = [
         ("show_extracted_text", "Extracted text"),
         ("show_page_numbers", "Page numbers"),
