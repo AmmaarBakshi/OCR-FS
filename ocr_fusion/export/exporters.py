@@ -562,6 +562,64 @@ def _html_comparison(comparison) -> list[str]:
     return parts
 
 
+#: Print stylesheet. Deliberately a smaller subset than the HTML one: the
+#: paginating renderer supports plain block and table layout, not grid or
+#: media queries, and silently drops what it cannot apply.
+_PDF_STYLE = """
+  body { font-family: sans-serif; font-size: 10px; color: #12141c; }
+  h1 { font-size: 17px; margin: 0 0 2px 0; }
+  h2 { font-size: 12px; margin: 16px 0 5px 0; color: #2f3345; }
+  h3 { font-size: 10.5px; margin: 11px 0 4px 0; }
+  .meta { font-size: 8.5px; color: #5b6072; margin-bottom: 6px; }
+  .text { font-family: monospace; font-size: 8.5px; white-space: pre-wrap;
+          background: #f6f7fb; padding: 7px; }
+  table { font-size: 8.5px; }
+  th { text-align: left; color: #5b6072; font-weight: normal; padding-right: 10px; }
+  td { text-align: left; padding-right: 10px; }
+  .failed { color: #b4232c; }
+"""
+
+#: Page geometry, in points. A4 with a 50pt (~18mm) margin.
+_PDF_MARGIN = 50
+
+
+def export_pdf(result: PipelineResult, settings: AppSettings) -> bytes:
+    """The same report as the HTML export, paginated as a PDF.
+
+    Rendered from the shared report body through PyMuPDF, which is already a
+    dependency for reading PDFs - so the format that most clients expect to be
+    handed costs no new package.
+    """
+    import fitz  # imported lazily: only this exporter needs it
+
+    body = "\n".join(_report_body(result, settings))
+    html = f"<html><body>{body}</body></html>"
+
+    buffer = io.BytesIO()
+    story = fitz.Story(html=html, user_css=_PDF_STYLE)
+    writer = fitz.DocumentWriter(buffer)
+    mediabox = fitz.paper_rect("a4")
+    frame = mediabox + (_PDF_MARGIN, _PDF_MARGIN, -_PDF_MARGIN, -_PDF_MARGIN)
+
+    more = True
+    # Guarded rather than while-True: a pathological transcription must not be
+    # able to spin the renderer forever inside a Streamlit request.
+    for _ in range(_PDF_MAX_PAGES):
+        if not more:
+            break
+        device = writer.begin_page(mediabox)
+        more, _filled = story.place(frame)
+        story.draw(device)
+        writer.end_page()
+    writer.close()
+    return buffer.getvalue()
+
+
+#: Upper bound on generated pages. Reached only by a transcription far larger
+#: than any real scan; the alternative is an unbounded loop.
+_PDF_MAX_PAGES = 2000
+
+
 #: Exporter registry. Add a format by registering a callable here.
 EXPORTERS: dict[OutputFormat, Callable[[PipelineResult, AppSettings], str]] = {
     OutputFormat.TXT: export_txt,
@@ -579,13 +637,16 @@ MIME_TYPES: dict[OutputFormat, str] = {
     OutputFormat.CSV: "text/csv",
     OutputFormat.XML: "application/xml",
     OutputFormat.HTML: "text/html",
+    OutputFormat.PDF: "application/pdf",
 }
 
 
 #: Exporters whose payload is binary. A binary format has no meaningful ``str``
 #: form, so it is registered here instead of in :data:`EXPORTERS` and is reached
 #: through :func:`export_bytes`.
-BINARY_EXPORTERS: dict[OutputFormat, Callable[[PipelineResult, AppSettings], bytes]] = {}
+BINARY_EXPORTERS: dict[OutputFormat, Callable[[PipelineResult, AppSettings], bytes]] = {
+    OutputFormat.PDF: export_pdf,
+}
 
 
 def is_binary(output_format: OutputFormat) -> bool:
@@ -644,6 +705,7 @@ __all__ = [
     "export_filename",
     "export_json",
     "export_markdown",
+    "export_pdf",
     "export_txt",
     "export_xml",
     "is_binary",

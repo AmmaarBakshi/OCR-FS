@@ -42,6 +42,7 @@ class OutputFormat(str, Enum):
     CSV = "csv"
     XML = "xml"
     HTML = "html"
+    PDF = "pdf"
 
 
 class FusionStrategy(str, Enum):

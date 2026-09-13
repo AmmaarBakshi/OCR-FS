@@ -1,4 +1,4 @@
-"""Export pipeline results to TXT, Markdown, JSON, CSV, XML and HTML."""
+"""Export pipeline results to TXT, Markdown, JSON, CSV, XML, HTML and PDF."""
 
 from ocr_fusion.export.exporters import (
     BINARY_EXPORTERS,
@@ -11,6 +11,7 @@ from ocr_fusion.export.exporters import (
     export_html,
     export_json,
     export_markdown,
+    export_pdf,
     export_txt,
     export_xml,
     is_binary,
@@ -27,6 +28,7 @@ __all__ = [
     "export_html",
     "export_json",
     "export_markdown",
+    "export_pdf",
     "export_txt",
     "export_xml",
     "is_binary",

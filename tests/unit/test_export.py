@@ -10,7 +10,14 @@ from xml.etree import ElementTree
 import pytest
 
 from ocr_fusion.config.schema import OutputFormat
-from ocr_fusion.export import MIME_TYPES, export, export_filename
+from ocr_fusion.export import (
+    BINARY_EXPORTERS,
+    EXPORTERS,
+    MIME_TYPES,
+    export,
+    export_bytes,
+    export_filename,
+)
 from ocr_fusion.metrics import NOT_AVAILABLE
 from ocr_fusion.ocr.interface import OCRResult, OCRStatus, PageResult, TokenUsage
 from ocr_fusion.pipeline.comparison import compare_texts
@@ -65,11 +72,16 @@ def run_result(multi_page_document) -> PipelineResult:
 class TestAllFormats:
     @pytest.mark.parametrize("output_format", list(OutputFormat))
     def test_produces_non_empty_output(self, run_result, settings, output_format):
-        assert export(run_result, settings, output_format).strip()
+        assert export_bytes(run_result, settings, output_format).strip()
 
     @pytest.mark.parametrize("output_format", list(OutputFormat))
     def test_has_a_mime_type(self, output_format):
         assert MIME_TYPES[output_format]
+
+    @pytest.mark.parametrize("output_format", list(OutputFormat))
+    def test_is_registered_exactly_once(self, output_format):
+        """Every format is either text or binary, never both and never neither."""
+        assert (output_format in EXPORTERS) != (output_format in BINARY_EXPORTERS)
 
     @pytest.mark.parametrize("output_format", list(OutputFormat))
     def test_filename_uses_the_document_and_extension(self, run_result, output_format):
@@ -89,7 +101,12 @@ class TestAllFormats:
             engine_results=[OCRResult.failure("a", "A", "engine down")],
             total_duration_seconds=0.4,
         )
-        assert export(empty, settings, output_format) is not None
+        assert export_bytes(empty, settings, output_format) is not None
+
+    def test_a_binary_format_refuses_to_pose_as_text(self, run_result, settings):
+        """Returning mojibake would be worse than refusing."""
+        with pytest.raises(ValueError, match="binary"):
+            export(run_result, settings, OutputFormat.PDF)
 
 
 class TestTxt:
@@ -293,6 +310,53 @@ class TestHtml:
         page = export(run_result, settings, OutputFormat.HTML)
         assert "<h2>Comparison</h2>" not in page
         assert "<h2>Engine outputs</h2>" not in page
+
+
+class TestPdf:
+    def test_is_a_real_pdf(self, run_result, settings):
+        assert export_bytes(run_result, settings, OutputFormat.PDF).startswith(b"%PDF-")
+
+    def test_reopens_and_contains_the_transcription(self, run_result, settings):
+        """A PDF that no reader can open would still pass a magic-byte check."""
+        fitz = pytest.importorskip("fitz")
+        data = export_bytes(run_result, settings, OutputFormat.PDF)
+        with fitz.open(stream=data, filetype="pdf") as document:
+            assert document.page_count >= 1
+            text = "".join(page.get_text() for page in document)
+        assert "ACME LOGISTICS LTD" in text
+        assert run_result.document.filename in text
+
+    def test_a_long_transcription_paginates(self, settings, single_page_document):
+        fitz = pytest.importorskip("fitz")
+        engine = OCRResult(
+            provider_id="qwen_vl",
+            provider_name="Qwen2.5-VL",
+            pages=[PageResult(1, "Line of transcribed text.\n" * 400)],
+        )
+        run = PipelineResult(document=single_page_document, engine_results=[engine])
+        data = export_bytes(run, settings, OutputFormat.PDF)
+        with fitz.open(stream=data, filetype="pdf") as document:
+            assert document.page_count > 1
+
+    def test_survives_text_the_renderer_would_read_as_markup(
+        self, settings, single_page_document
+    ):
+        engine = OCRResult(
+            provider_id="qwen_vl",
+            provider_name="Qwen2.5-VL",
+            pages=[PageResult(1, "<table><td>unclosed & broken")],
+        )
+        run = PipelineResult(document=single_page_document, engine_results=[engine])
+        assert export_bytes(run, settings, OutputFormat.PDF).startswith(b"%PDF-")
+
+    def test_sections_can_be_hidden(self, run_result, settings):
+        fitz = pytest.importorskip("fitz")
+        settings.output.show_raw_results = False
+        settings.output.show_comparison = False
+        data = export_bytes(run_result, settings, OutputFormat.PDF)
+        with fitz.open(stream=data, filetype="pdf") as document:
+            text = "".join(page.get_text() for page in document)
+        assert "Engine outputs" not in text
 
 
 class TestCsv:
