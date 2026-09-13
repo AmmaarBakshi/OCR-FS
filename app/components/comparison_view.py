@@ -29,8 +29,15 @@ def render(comparison: ComparisonResult, settings: AppSettings) -> None:
 
     _render_summary(comparison)
 
+    disagreements = comparison.disagreements()
     if comparison.numeric_conflicts:
-        _render_numeric_conflicts(comparison)
+        _render_numeric_notice(comparison)
+        # The diff below already highlights the numeric rows, so a separate
+        # list of them is worth showing only when there are other differences
+        # to hunt through. When every disagreement is numeric it would print
+        # the same rows twice in a row.
+        if len(disagreements) > len(comparison.numeric_conflicts):
+            _render_numeric_conflicts(comparison)
 
     show_all = st.checkbox(
         "Show lines both engines agreed on",
@@ -38,7 +45,7 @@ def render(comparison: ComparisonResult, settings: AppSettings) -> None:
         key="ofs_show_equal",
         help="Off by default so the disagreements are easy to find.",
     )
-    rows = comparison.lines if show_all else comparison.disagreements()
+    rows = comparison.lines if show_all else disagreements
 
     if not rows:
         notice("The two engines produced identical text.", "info")
@@ -68,8 +75,13 @@ def _render_summary(comparison: ComparisonResult) -> None:
     )
 
 
-def _render_numeric_conflicts(comparison: ComparisonResult) -> None:
-    """Digit disagreements, shown first because they are the costly ones."""
+def _render_numeric_notice(comparison: ComparisonResult) -> None:
+    """The warning itself, shown whenever digits disagree.
+
+    Separate from the list below because the warning always earns its place -
+    a wrong figure is the expensive kind of OCR error - while the list only
+    does when it is not a copy of the diff.
+    """
     count = len(comparison.numeric_conflicts)
     notice(
         f"The engines disagree on numbers in {count} "
@@ -78,7 +90,13 @@ def _render_numeric_conflicts(comparison: ComparisonResult) -> None:
         "warn",
         "Numeric disagreements",
     )
-    with st.expander(f"Review {count} numeric disagreement{'s' if count != 1 else ''}", expanded=count <= 5):
+
+
+def _render_numeric_conflicts(comparison: ComparisonResult) -> None:
+    """Just the digit disagreements, pulled out of a longer diff."""
+    count = len(comparison.numeric_conflicts)
+    label = f"Review {count} numeric disagreement{'s' if count != 1 else ''}"
+    with st.expander(label, expanded=count <= 5):
         rows = "".join(
             '<div class="ofs-diff-row numeric">'
             f'<div class="ofs-diff-cell">{escape(conflict["text_a"])}</div>'
