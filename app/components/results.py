@@ -271,9 +271,9 @@ def _render_counts(text: str, settings: AppSettings) -> None:
 def _render_export(result: PipelineResult, settings: AppSettings) -> None:
     """Download buttons for every supported format (spec s10)."""
     st.markdown(
-        '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">'
-        "Exports follow the Output settings, so anything switched off there is "
-        "left out of the file as well.</div>",
+        '<div class="ofs-prose" style="font-size:13px;color:var(--ink-soft);'
+        'margin-bottom:14px;">Exports follow the Output settings, so anything '
+        "switched off there is left out of the file as well.</div>",
         unsafe_allow_html=True,
     )
 

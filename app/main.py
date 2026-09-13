@@ -195,10 +195,11 @@ def _render_intake(settings) -> None:
     with card("How it works"):
         pipeline_view.render_placeholder(_planned_stage_labels(settings))
         st.markdown(
-            '<div style="margin-top:14px;font-size:13px;color:var(--ink-soft);'
-            'line-height:1.65;">Each engine transcribes the document independently. '
-            "Their results are compared side by side, and a single combined result "
-            "is produced from both. Every stage reports how long it took.</div>",
+            '<div class="ofs-prose" style="margin-top:14px;font-size:13px;'
+            'color:var(--ink-soft);">Each engine transcribes the document '
+            "independently. Their results are compared side by side, and a single "
+            "combined result is produced from both. Every stage reports how long "
+            "it took.</div>",
             unsafe_allow_html=True,
         )
 

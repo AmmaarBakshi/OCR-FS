@@ -199,6 +199,13 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 .ofs-log-line.warning { color: #fcd34d; }
 .ofs-log-line.error { color: #fca5a5; }
 
+/* ---------- readable prose ---------- */
+/* A sentence that runs the full width of a wide window is hard to track back
+   to the start of the next line, so explanatory text is held to a measure.
+   Scoped to the main pane: the sidebar is already narrow enough. */
+.ofs-prose { max-width: 68ch; line-height: 1.65; }
+[data-testid="stMain"] [data-testid="stCaptionContainer"] { max-width: 78ch; }
+
 /* ---------- text output ---------- */
 .ofs-output {
   background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
@@ -225,7 +232,7 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 /* ---------- document chat ---------- */
 .ofs-chat-intro {
   font-size: 13px; color: var(--ink-soft); line-height: 1.6;
-  margin-bottom: 12px;
+  margin-bottom: 12px; max-width: 68ch;
 }
 /* ---------- empty state ---------- */
 .ofs-empty { text-align: center; padding: 44px 20px; color: var(--ink-faint); }
