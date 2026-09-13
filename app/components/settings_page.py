@@ -54,6 +54,20 @@ _STRATEGY_LABELS = {
 }
 
 
+#: One line of orientation per category, shown under the heading so the page
+#: says what you are looking at instead of making you infer it from the fields.
+_CATEGORY_BLURBS = {
+    "General": "Appearance, language and the interface mode.",
+    "OCR Models": "Where Ollama runs, and how the first engine reads a page.",
+    "Unlimited OCR": "How the second engine runs, and which model it uses.",
+    "Prompts": "The exact instructions each model is given.",
+    "Pipeline": "Which stages run, and how two results become one.",
+    "Chat": "Asking questions about a document after it is transcribed.",
+    "Output": "How you get the result, and what it includes.",
+    "Privacy": "What is kept, and what is written to disk.",
+}
+
+
 def render() -> None:
     """Draw the settings page."""
     current = state.settings()
@@ -61,13 +75,8 @@ def render() -> None:
     draft = current.model_copy(deep=True)
 
     st.markdown("### Settings")
-    category = st.radio(
-        "Category",
-        CATEGORIES,
-        horizontal=True,
-        key="ofs_settings_category",
-        label_visibility="collapsed",
-    )
+    category = _render_nav()
+    st.caption(_CATEGORY_BLURBS.get(category, ""))
     st.divider()
 
     renderers = {
@@ -84,6 +93,32 @@ def render() -> None:
 
     st.divider()
     _render_actions(draft)
+
+
+def _render_nav() -> str:
+    """Category navigation.
+
+    A segmented control rather than a row of radios: eight radio dials read as
+    a question with eight answers, which is not what picking a settings page
+    is. Clicking the active segment clears the selection, so the previous
+    category is remembered and reused rather than silently snapping back to
+    the first one.
+    """
+    chosen = st.segmented_control(
+        "Category",
+        CATEGORIES,
+        default=st.session_state.get(_ACTIVE_CATEGORY, CATEGORIES[0]),
+        key="ofs_settings_category",
+        label_visibility="collapsed",
+    )
+    if chosen is None:
+        chosen = st.session_state.get(_ACTIVE_CATEGORY, CATEGORIES[0])
+    st.session_state[_ACTIVE_CATEGORY] = chosen
+    return chosen
+
+
+#: Remembers the open category across the rerun that a deselection causes.
+_ACTIVE_CATEGORY = "ofs_settings_category_active"
 
 
 def _render_actions(draft: AppSettings) -> None:
