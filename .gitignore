@@ -51,7 +51,17 @@ app_settings.json
 *.pdf
 *.tiff
 *.tif
+# Every other format the loaders accept, plus spreadsheets that arrive
+# alongside them: a scanned ID or statement must not reach a remote.
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp
+*.xlsx
+*.xls
 !docs/**/*.pdf
+!docs/**/*.png
 !tests/fixtures/**
 
 # Model weights / large artefacts
