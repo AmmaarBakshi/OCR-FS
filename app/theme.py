@@ -199,6 +199,18 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 .ofs-log-line.warning { color: #fcd34d; }
 .ofs-log-line.error { color: #fca5a5; }
 
+/* ---------- section headings ---------- */
+/* A settings group heading was rendering almost as large as the page title,
+   which flattened the hierarchy: everything looked equally important. Sized
+   down and given room above, so a long page reads as a few groups rather than
+   one list of thirty fields. */
+[data-testid="stMain"] h4 {
+  font-size: 14.5px; font-weight: 680; color: var(--ink);
+  margin: 30px 0 10px; letter-spacing: -0.008em;
+}
+[data-testid="stMain"] h4 + [data-testid="stElementContainer"]
+  [data-testid="stCaptionContainer"] { margin-top: -4px; }
+
 /* ---------- sidebar workspace nav ---------- */
 /* Choosing a page is navigation, not a form question, so the radio is dressed
    as a list of nav rows. The input itself is untouched: keyboard and screen
