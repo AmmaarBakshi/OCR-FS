@@ -45,6 +45,18 @@ class OutputFormat(str, Enum):
     PDF = "pdf"
 
 
+class DeliveryMode(str, Enum):
+    """How a finished result is handed over."""
+
+    ON_SITE = "on_site"
+    """Read it here. The transcription is shown in the page and nothing is
+    downloaded unless the user asks for it."""
+
+    OFF_SITE = "off_site"
+    """Take it away. The result is prepared as a file in a chosen format and
+    the page offers it for download instead of printing it."""
+
+
 class FusionStrategy(str, Enum):
     """How two engine outputs are reconciled into the final result."""
 
@@ -256,6 +268,20 @@ class OutputSettings(BaseModel):
     show_raw_results: bool = True
     show_comparison: bool = True
     show_processing_logs: bool = True
+
+    delivery_mode: DeliveryMode = DeliveryMode.ON_SITE
+    """Whether a finished result is read in the page or taken away as a file.
+
+    Two audiences want opposite things from the same run: someone checking a
+    scan wants the text in front of them, while someone processing a batch
+    wants a file in a named format. The default reads it here, because that is
+    the one that needs no decision from a first-time user."""
+
+    download_format: OutputFormat = OutputFormat.PDF
+    """The format prepared when :attr:`delivery_mode` is off-site.
+
+    Every format stays available for download regardless; this is only the one
+    the page puts in front of the user."""
 
 
 class DocumentSettings(BaseModel):
