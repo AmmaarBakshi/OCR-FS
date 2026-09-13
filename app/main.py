@@ -26,6 +26,7 @@ if str(_ROOT) not in sys.path:
 
 from app import state  # noqa: E402
 from app.components import (  # noqa: E402
+    chat_panel,
     document_preview,
     logs,
     metrics_view,
@@ -321,6 +322,10 @@ def _render_results(result, settings) -> None:
     with right:
         with card("Results"):
             results.render(result, settings)
+
+    if settings.chat.enabled:
+        with card("Ask about this document"):
+            chat_panel.render(result, settings)
 
     if state.developer_mode():
         with card("Metrics"):
