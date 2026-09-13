@@ -29,8 +29,11 @@ it; neither the pipeline nor the interface changes.
   never as a zero.
 - **Demo Mode and Developer Mode.** One toggle between a clean client-facing
   view and full metrics, logs, raw output and configuration.
-- **Exports** to TXT, Markdown, JSON and CSV, with a documented, stable JSON
-  schema for downstream consumers.
+- **Ask about the document.** Once a run finishes, a question box answers from
+  the transcription — "what is in this document?", "list the dates and
+  amounts" — and says so when the document does not contain the answer.
+- **Exports** to TXT, Markdown, JSON, CSV, XML, HTML and PDF, with a
+  documented, stable JSON schema for downstream consumers.
 
 ---
 
@@ -90,7 +93,20 @@ to confirm both stages are ready before your first run.
 2. Press **Run OCR**. The pipeline display shows each stage as it runs.
 3. Read the **Final result**, or switch tabs to see each engine's raw output.
 4. Open **Comparison** to see where the engines disagreed.
-5. Export from the **Export** tab.
+5. Ask a question about the document in the box below the results.
+6. Export from the **Export** tab.
+
+### How you get the result
+
+**Settings › Output** chooses between two ways of handing a result over:
+
+| Mode | What the results panel does |
+|---|---|
+| **On site** (default) | Shows the transcription in the page. |
+| **Off site** | Prepares the result as a file in a format you pick — PDF, Markdown, HTML, XML, JSON, CSV or plain text — and offers it for download. |
+
+Every format stays available in the **Export** tab either way; the mode only
+decides which one the page leads with.
 
 Turn on **Developer Mode** in the sidebar for metrics, the processing log, raw
 engine responses and the exact configuration a run used.

@@ -132,12 +132,45 @@ an enum to a function:
 ```python
 FUSION_STRATEGIES = {FusionStrategy.LINE_VOTE: fuse_line_vote, ...}
 EXPORTERS         = {OutputFormat.JSON: export_json, ...}
+BINARY_EXPORTERS  = {OutputFormat.PDF: export_pdf, ...}
 LOADERS           = {DocumentKind.PDF: load_pdf_document, ...}
 ```
 
 Adding a fusion strategy, an export format or a document type is one function
 and one entry. DOCX support, for instance, is a loader that returns a
 `Document` — nothing downstream notices.
+
+An exporter returns `str`; a format whose bytes are not text registers in
+`BINARY_EXPORTERS` instead. Callers that write a file or serve a download go
+through `export_bytes()` and never have to know which kind a format is.
+
+---
+
+## Asking questions about a result
+
+`ocr_fusion.chat` sits after the pipeline rather than inside it. It takes the
+transcription a run produced and answers questions about it:
+
+```python
+answer = DocumentChat(settings).ask(
+    "What is the total?", document_text=result.final_text
+)
+```
+
+Three decisions are worth knowing:
+
+- **It reads the transcription, not the page.** A vision model would spend
+  minutes re-reading a scan the pipeline has already read, and answering from
+  anything other than the transcription would let the chat and the displayed
+  result disagree about the same document.
+- **It is grounded by prompt and says so when it cannot answer.** "The document
+  does not say" is a correct answer; inventing a plausible figure is not.
+- **A long document is trimmed from the middle**, keeping the head and the
+  tail — where a document identifies and totals itself — and the caller is told
+  the trim happened so the interface can say so.
+
+Failures come back as a `ChatAnswer` carrying `error` and `remedy`, never as an
+exception, the same contract a provider follows.
 
 ---
 

@@ -35,6 +35,9 @@ keep that honest. `app/` contains no OCR logic.
 
 Pipeline: `Document → engines → Comparison → Fusion → PipelineResult`.
 
+`ocr_fusion/chat/` sits after the pipeline, not inside it: it answers questions
+about a finished transcription and never re-reads the page.
+
 Four extension seams, all working the same way — the caller depends on an
 interface or a registry entry, never on an implementation:
 
@@ -44,6 +47,7 @@ interface or a registry entry, never on an implementation:
 | `UnlimitedBackendBase` | deployment shape for Unlimited-OCR | `ocr/providers/unlimited/` |
 | `FUSION_STRATEGIES` | fusion policy | `pipeline/fusion.py` |
 | `LOADERS` / `EXPORTERS` | document type / export format | `documents/loaders.py`, `export/exporters.py` |
+| `BINARY_EXPORTERS` | export format whose bytes are not text | `export/exporters.py`, reached via `export_bytes()` |
 
 The pipeline and UI resolve engines through `default_registry` and never import
 a provider class, which is why a new engine needs no UI change. `docs/PROVIDERS.md`
