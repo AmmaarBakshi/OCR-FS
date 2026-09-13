@@ -402,17 +402,15 @@ _HTML_STYLE = """
   th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #e4e6ef;
            vertical-align: top; }
   th { color: #5b6072; font-weight: 600; }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px;
-       font-size: 13px; margin: 0 0 12px; }
-  dt { color: #5b6072; }
-  dd { margin: 0; }
+  .kv { width: auto; margin-bottom: 14px; }
+  .kv th { width: 150px; font-weight: 500; }
   .failed { color: #b4232c; }
   @media (prefers-color-scheme: dark) {
     body { background: #12141c; color: #e8eaf2; }
     h2 { border-color: #2a2e3f; }
     .text { background: #1a1d29; border-color: #2a2e3f; }
     th, td { border-color: #2a2e3f; }
-    .meta, th, dt { color: #9aa0b5; }
+    .meta, th { color: #9aa0b5; }
   }
 """
 
@@ -422,12 +420,19 @@ def _html_text_block(text: str) -> str:
 
 
 def _html_definitions(pairs: list[tuple[str, str]]) -> str:
+    """Term/value pairs as a two-column table.
+
+    A table rather than a definition list because the PDF renderer lays out
+    tables and ignores ``dl``, and one markup shape for both outputs is worth
+    more than the slightly better semantics.
+    """
     if not pairs:
         return ""
-    items = "".join(
-        f"<dt>{escape(term)}</dt><dd>{escape(value)}</dd>" for term, value in pairs
+    rows = "".join(
+        f"<tr><th>{escape(term)}</th><td>{escape(value)}</td></tr>"
+        for term, value in pairs
     )
-    return f"<dl>{items}</dl>"
+    return f'<table class="kv">{rows}</table>'
 
 
 def _html_engine_metrics(engine, settings: AppSettings) -> list[tuple[str, str]]:
@@ -452,12 +457,11 @@ def _html_engine_metrics(engine, settings: AppSettings) -> list[tuple[str, str]]
     return pairs
 
 
-def export_html(result: PipelineResult, settings: AppSettings) -> str:
-    """A self-contained report page.
+def _report_body(result: PipelineResult, settings: AppSettings) -> list[str]:
+    """The report as HTML fragments, independent of how it is paged.
 
-    Everything is inlined - no stylesheet, no script, no external request - so
-    the file renders identically offline and carries no tracking surface for a
-    document that may be confidential.
+    Shared by the HTML and PDF exports so the two can never describe the same
+    run differently; only the chrome and the stylesheet around them differ.
     """
     output = settings.output
     document = result.document
@@ -474,11 +478,7 @@ def export_html(result: PipelineResult, settings: AppSettings) -> str:
     meta.append(f"Generated {datetime.now():%Y-%m-%d %H:%M:%S}")
 
     parts.append(f"<h1>{escape(document.filename)}</h1>")
-    parts.append(
-        '<div class="meta">'
-        + "".join(f"<span>{escape(entry)}</span>" for entry in meta)
-        + "</div>"
-    )
+    parts.append(f'<div class="meta">{escape(" - ".join(meta))}</div>')
 
     if output.show_extracted_text:
         parts.append("<h2>Final result</h2>")
@@ -489,7 +489,7 @@ def export_html(result: PipelineResult, settings: AppSettings) -> str:
         if output.show_word_count:
             counts.append(f"{len(result.final_text.split()):,} words")
         if counts:
-            parts.append(f'<div class="meta">{escape(" / ".join(counts))}</div>')
+            parts.append(f'<div class="meta">{escape(" - ".join(counts))}</div>')
 
     if output.show_comparison and result.comparison is not None:
         parts.extend(_html_comparison(result.comparison))
@@ -509,12 +509,23 @@ def export_html(result: PipelineResult, settings: AppSettings) -> str:
         parts.append("<h2>Processing log</h2>")
         parts.append(_html_text_block(result.log.as_text()))
 
-    body = "\n".join(parts)
+    return parts
+
+
+def export_html(result: PipelineResult, settings: AppSettings) -> str:
+    """A self-contained report page.
+
+    Everything is inlined - no stylesheet, no script, no external request - so
+    the file renders identically offline and carries no tracking surface for a
+    document that may be confidential.
+    """
+    body = "\n".join(_report_body(result, settings))
+    title = escape(result.document.filename)
     return (
         "<!doctype html>\n"
         '<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>OCR result - {escape(document.filename)}</title>\n"
+        f"<title>OCR result - {title}</title>\n"
         f"<style>{_HTML_STYLE}</style>\n</head>\n<body>\n{body}\n</body>\n</html>\n"
     )
 
