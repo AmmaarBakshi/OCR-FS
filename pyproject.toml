@@ -46,7 +46,11 @@ include = ["ocr_fusion*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-q --strict-markers"
+# Live-engine tests are opt-in: they are deselected here so that `pytest`
+# means the same thing whether or not Ollama happens to be running on the
+# machine. A command-line -m overrides this one, so `pytest -m integration`
+# still selects them.
+addopts = "-q --strict-markers -m 'not integration'"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: tests that need a live provider runtime (deselect with -m 'not integration')",
