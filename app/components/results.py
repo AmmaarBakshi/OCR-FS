@@ -10,7 +10,7 @@ from app import state
 from app.components import comparison_view, metrics_view
 from app.theme import badge, empty_state, notice
 from ocr_fusion.config.schema import AppSettings, OutputFormat
-from ocr_fusion.export import MIME_TYPES, export, export_filename
+from ocr_fusion.export import MIME_TYPES, export_bytes, export_filename
 from ocr_fusion.ocr.interface import OCRResult, OCRStatus
 from ocr_fusion.pipeline.result import PipelineResult
 
@@ -217,7 +217,7 @@ def _render_export(result: PipelineResult, settings: AppSettings) -> None:
 
     for output_format in OutputFormat:
         try:
-            payload = export(result, settings, output_format)
+            payload = export_bytes(result, settings, output_format)
         except Exception as exc:  # noqa: BLE001 - one broken format must not
             # hide the others.
             notice(f"{output_format.value.upper()} export failed: {escape(str(exc))}", "err")
@@ -234,7 +234,7 @@ def _render_export(result: PipelineResult, settings: AppSettings) -> None:
         with right:
             st.download_button(
                 "Download",
-                data=payload.encode("utf-8"),
+                data=payload,
                 file_name=export_filename(result, output_format),
                 mime=MIME_TYPES[output_format],
                 key=f"ofs_download_{output_format.value}",

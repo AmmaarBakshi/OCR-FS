@@ -20,7 +20,7 @@ from ocr_fusion.config import AppSettings, load_settings
 from ocr_fusion.config.schema import OutputFormat, UnlimitedBackend
 from ocr_fusion.documents import load_document
 from ocr_fusion.documents.errors import DocumentError
-from ocr_fusion.export import export
+from ocr_fusion.export import export_bytes
 from ocr_fusion.metrics import format_duration
 from ocr_fusion.pipeline import build_pipeline
 from ocr_fusion.version import __version__
@@ -130,15 +130,18 @@ def command_run(args: argparse.Namespace) -> int:
             print(f"  {_symbol(stage.status.value)} {stage.label:<28} {timing:>9}", file=sys.stderr)
         print(f"  total: {format_duration(result.total_duration_seconds)}", file=sys.stderr)
 
-    payload = export(result, settings, OutputFormat(args.format))
+    payload = export_bytes(result, settings, OutputFormat(args.format))
     if args.output:
-        Path(args.output).write_text(payload, encoding="utf-8")
+        Path(args.output).write_bytes(payload)
         if not args.quiet:
             print(f"written to {args.output}", file=sys.stderr)
     else:
         # Results go to stdout so the command composes with a shell pipeline;
-        # progress goes to stderr so it does not corrupt them.
-        sys.stdout.write(payload)
+        # progress goes to stderr so it does not corrupt them. Binary formats
+        # are written through the buffer so the console encoding cannot mangle
+        # them.
+        sys.stdout.buffer.write(payload)
+        sys.stdout.buffer.flush()
 
     return 0 if result.succeeded else 1
 

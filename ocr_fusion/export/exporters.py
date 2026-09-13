@@ -571,14 +571,47 @@ MIME_TYPES: dict[OutputFormat, str] = {
 }
 
 
+#: Exporters whose payload is binary. A binary format has no meaningful ``str``
+#: form, so it is registered here instead of in :data:`EXPORTERS` and is reached
+#: through :func:`export_bytes`.
+BINARY_EXPORTERS: dict[OutputFormat, Callable[[PipelineResult, AppSettings], bytes]] = {}
+
+
+def is_binary(output_format: OutputFormat) -> bool:
+    """Whether ``output_format`` produces bytes rather than text."""
+    return output_format in BINARY_EXPORTERS
+
+
 def export(
     result: PipelineResult, settings: AppSettings, output_format: OutputFormat
 ) -> str:
-    """Render ``result`` in ``output_format``."""
+    """Render ``result`` in ``output_format`` as text.
+
+    Raises for a binary format rather than returning mojibake; callers that
+    accept either kind should use :func:`export_bytes`.
+    """
+    if is_binary(output_format):
+        raise ValueError(
+            f"{output_format.value.upper()} is a binary format - use export_bytes()."
+        )
     exporter = EXPORTERS.get(output_format)
     if exporter is None:
         raise ValueError(f"Unsupported export format: {output_format}")
     return exporter(result, settings)
+
+
+def export_bytes(
+    result: PipelineResult, settings: AppSettings, output_format: OutputFormat
+) -> bytes:
+    """Render ``result`` as the bytes that belong in a file of that format.
+
+    The single entry point for anything that writes or serves a download, so a
+    caller never has to know whether a format is text or binary.
+    """
+    binary = BINARY_EXPORTERS.get(output_format)
+    if binary is not None:
+        return binary(result, settings)
+    return export(result, settings, output_format).encode("utf-8")
 
 
 def export_filename(result: PipelineResult, output_format: OutputFormat) -> str:
@@ -590,9 +623,11 @@ def export_filename(result: PipelineResult, output_format: OutputFormat) -> str:
 
 
 __all__ = [
+    "BINARY_EXPORTERS",
     "EXPORTERS",
     "MIME_TYPES",
     "export",
+    "export_bytes",
     "export_csv",
     "export_html",
     "export_filename",
@@ -600,4 +635,5 @@ __all__ = [
     "export_markdown",
     "export_txt",
     "export_xml",
+    "is_binary",
 ]
