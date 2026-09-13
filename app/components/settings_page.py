@@ -11,10 +11,13 @@ abandoned change never leaks into the next run.
 
 from __future__ import annotations
 
+from html import escape
+
 import streamlit as st
 
 from app import state
 from app.theme import badge, notice
+from ocr_fusion.chat import DocumentChat
 from ocr_fusion.config import AppSettings, load_settings, save_settings
 from ocr_fusion.config.prompts import DEFAULT_PROMPTS
 from ocr_fusion.config.schema import (
@@ -31,6 +34,7 @@ CATEGORIES = [
     "Unlimited OCR",
     "Prompts",
     "Pipeline",
+    "Chat",
     "Output",
     "Privacy",
 ]
@@ -72,6 +76,7 @@ def render() -> None:
         "Unlimited OCR": _unlimited,
         "Prompts": _prompts,
         "Pipeline": _pipeline,
+        "Chat": _chat,
         "Output": _output,
         "Privacy": _privacy,
     }
@@ -345,6 +350,8 @@ def _prompts(draft: AppSettings) -> None:
         ("unlimited_ocr_task", "Unlimited-OCR task prompt", 90),
         ("fusion_system", "Fusion system prompt", 240),
         ("fusion_user", "Fusion instruction", 200),
+        ("chat_system", "Question-answering system prompt", 260),
+        ("chat_user", "Question-answering instruction", 160),
     ]
     for key, label, height in fields:
         value = st.text_area(
@@ -424,6 +431,100 @@ def _pipeline(draft: AppSettings) -> None:
             value=pipeline.max_pages,
             help="Useful during a live demo so a long PDF cannot run away.",
         )
+
+
+def _chat(draft: AppSettings) -> None:
+    chat = draft.chat
+    st.caption(
+        "Ask questions about a document once it has been transcribed. Answers "
+        "are drawn from the transcription, so nothing is sent anywhere the OCR "
+        "run did not already go."
+    )
+    chat.enabled = st.checkbox("Offer the question box after a run", value=chat.enabled)
+
+    left, right = st.columns(2)
+    with left:
+        chat.model = st.text_input(
+            "Model",
+            value=chat.model,
+            help=(
+                "A text model, not a vision one - the question is answered from "
+                "the transcription. Must already be pulled: ollama pull "
+                f"{chat.model or 'qwen2.5:1.5b'}"
+            ),
+            key="ofs_chat_model",
+        )
+        chat.max_tokens = int(
+            st.number_input(
+                "Maximum answer length (tokens)",
+                min_value=128,
+                max_value=16384,
+                value=chat.max_tokens,
+                step=128,
+                help="Raise this if long answers come back cut off.",
+            )
+        )
+        chat.keep_alive = st.text_input(
+            "Keep model loaded for",
+            value=chat.keep_alive,
+            help=(
+                "How long Ollama holds this model in memory between questions. "
+                "Set to '0' on a machine that cannot hold it alongside the OCR "
+                "models."
+            ),
+            key="ofs_chat_keep_alive",
+        )
+    with right:
+        chat.timeout_seconds = float(
+            st.number_input(
+                "Timeout (seconds)",
+                min_value=15,
+                max_value=1800,
+                value=int(chat.timeout_seconds),
+                step=15,
+                help="The first question also loads the model, so it takes longest.",
+                key="ofs_chat_timeout",
+            )
+        )
+        chat.history_turns = int(
+            st.number_input(
+                "Earlier questions to remember",
+                min_value=0,
+                max_value=50,
+                value=chat.history_turns,
+                help=(
+                    "How much of the conversation is sent back, so a follow-up "
+                    "like 'and the date?' knows what it refers to. 0 treats "
+                    "every question as the first."
+                ),
+            )
+        )
+        chat.max_context_characters = int(
+            st.number_input(
+                "Most characters of the document to send",
+                min_value=1000,
+                max_value=500_000,
+                value=chat.max_context_characters,
+                step=1000,
+                help=(
+                    "A longer document is trimmed from the middle, keeping the "
+                    "start and the end, and the answer says so."
+                ),
+            )
+        )
+
+    if st.button("Check the chat model", key="ofs_chat_health"):
+        with st.spinner("Checking…"):
+            status = DocumentChat(draft).health_check()
+        if status.available:
+            notice(escape(status.message), "info", "Ready")
+        else:
+            notice(
+                escape(status.message)
+                + (f"<br><br><b>How to fix:</b> {escape(status.remedy)}" if status.remedy else ""),
+                "err",
+                "Not ready",
+            )
 
 
 _DELIVERY_LABELS = {
