@@ -50,6 +50,8 @@ ENV_OVERRIDES: dict[str, str] = {
     "OCRFS_MAX_PAGES": "pipeline.max_pages",
     "OCRFS_DEVELOPER_MODE": "general.developer_mode",
     "OCRFS_PERSIST_DOCUMENTS": "privacy.persist_documents",
+    "OCRFS_DELIVERY_MODE": "output.delivery_mode",
+    "OCRFS_DOWNLOAD_FORMAT": "output.download_format",
 }
 
 #: Variables whose value is taken verbatim, bypassing :func:`_coerce`.

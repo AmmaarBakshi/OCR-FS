@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 
 from ocr_fusion.config import AppSettings, load_settings, reset_settings, save_settings
 from ocr_fusion.config.prompts import DEFAULT_PROMPTS, render
-from ocr_fusion.config.schema import FusionStrategy, UnlimitedBackend
+from ocr_fusion.config.schema import (
+    DeliveryMode,
+    FusionStrategy,
+    OutputFormat,
+    UnlimitedBackend,
+)
 from ocr_fusion.config.store import env_overrides
 
 
@@ -144,6 +150,30 @@ class TestEnvironmentOverrides:
         settings = load_settings()
         assert settings.qwen.keep_alive == "0"
         assert settings.unlimited_ocr.keep_alive == "0"
+
+    def test_delivery_mode_can_be_selected_by_environment(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("OCRFS_SETTINGS_PATH", str(tmp_path / "settings.json"))
+        monkeypatch.setenv("OCRFS_DELIVERY_MODE", "off_site")
+        monkeypatch.setenv("OCRFS_DOWNLOAD_FORMAT", "xml")
+        settings = load_settings()
+        assert settings.output.delivery_mode is DeliveryMode.OFF_SITE
+        assert settings.output.download_format is OutputFormat.XML
+
+    def test_an_unknown_delivery_mode_falls_back_rather_than_guessing(
+        self, monkeypatch, tmp_path, caplog
+    ):
+        """A typo must not invent a mode, and must not stop the app starting.
+
+        Start-up survives a bad value by design - a corrupt configuration
+        should not brick a client demo - but the fallback is logged so the
+        typo is discoverable rather than silent.
+        """
+        monkeypatch.setenv("OCRFS_SETTINGS_PATH", str(tmp_path / "settings.json"))
+        monkeypatch.setenv("OCRFS_DELIVERY_MODE", "offsite")
+        with caplog.at_level(logging.WARNING):
+            settings = load_settings()
+        assert settings.output.delivery_mode is DeliveryMode.ON_SITE
+        assert "delivery_mode" in caplog.text
 
     def test_backend_can_be_selected_by_environment(self, monkeypatch, tmp_path):
         # Point the default path at a temp dir so the test never reads or
