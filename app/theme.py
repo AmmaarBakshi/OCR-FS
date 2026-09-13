@@ -199,6 +199,32 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 .ofs-log-line.warning { color: #fcd34d; }
 .ofs-log-line.error { color: #fca5a5; }
 
+/* ---------- sidebar workspace nav ---------- */
+/* Choosing a page is navigation, not a form question, so the radio is dressed
+   as a list of nav rows. The input itself is untouched: keyboard and screen
+   reader behaviour comes from the real control, only its appearance changes.
+   Hooks are the stable testid and Streamlit's own data-selected attribute -
+   if a release drops the dial-hiding rule the dial simply reappears, which is
+   a cosmetic regression rather than a broken page. */
+[data-testid="stSidebar"] [data-testid="stRadioGroup"] { gap: 2px; }
+[data-testid="stSidebar"] [data-testid="stRadioOption"] {
+  border-radius: 9px; padding: 7px 11px; margin: 0;
+  transition: background .12s ease, color .12s ease;
+}
+[data-testid="stSidebar"] [data-testid="stRadioOption"]:hover { background: var(--canvas); }
+[data-testid="stSidebar"] [data-testid="stRadioOption"] > div > div > div:not([data-testid]) {
+  display: none;
+}
+[data-testid="stSidebar"] [data-testid="stRadioOption"] p {
+  font-size: 13.5px; font-weight: 550; color: var(--ink-soft);
+}
+[data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"] {
+  background: var(--brand-soft);
+}
+[data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"] p {
+  color: var(--brand); font-weight: 650;
+}
+
 /* ---------- readable prose ---------- */
 /* A sentence that runs the full width of a wide window is hard to track back
    to the start of the next line, so explanatory text is held to a measure.
