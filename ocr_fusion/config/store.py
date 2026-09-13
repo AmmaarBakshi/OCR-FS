@@ -50,13 +50,19 @@ ENV_OVERRIDES: dict[str, str] = {
     "OCRFS_MAX_PAGES": "pipeline.max_pages",
     "OCRFS_DEVELOPER_MODE": "general.developer_mode",
     "OCRFS_PERSIST_DOCUMENTS": "privacy.persist_documents",
+    "OCRFS_CHAT_ENABLED": "chat.enabled",
+    "OCRFS_CHAT_MODEL": "chat.model",
+    "OCRFS_CHAT_TIMEOUT": "chat.timeout_seconds",
+    "OCRFS_CHAT_KEEP_ALIVE": "chat.keep_alive",
     "OCRFS_DELIVERY_MODE": "output.delivery_mode",
     "OCRFS_DOWNLOAD_FORMAT": "output.download_format",
 }
 
 #: Variables whose value is taken verbatim, bypassing :func:`_coerce`.
 #: A duration like ``0`` is a string, not the boolean ``_FALSE`` would make it.
-VERBATIM_ENV = frozenset({"OCRFS_QWEN_KEEP_ALIVE", "OCRFS_UNLIMITED_KEEP_ALIVE"})
+VERBATIM_ENV = frozenset(
+    {"OCRFS_QWEN_KEEP_ALIVE", "OCRFS_UNLIMITED_KEEP_ALIVE", "OCRFS_CHAT_KEEP_ALIVE"}
+)
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}

@@ -209,6 +209,39 @@ class TesseractSettings(BaseModel):
     timeout_seconds: float = Field(default=120.0, gt=0)
 
 
+class ChatSettings(BaseModel):
+    """Asking questions about a document once it has been transcribed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+
+    model: str = "qwen2.5:1.5b"
+    """A text model, not a vision one: the question is answered from the
+    transcription the pipeline already produced, so re-reading the page would
+    cost minutes and add nothing. Small by default because the work is reading
+    comprehension over a page or two, not generation."""
+
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    """Zero for the same reason transcription is: a question about what a
+    document says has one right answer, and sampling variety around it is
+    invention."""
+
+    max_tokens: int = Field(default=1024, gt=0)
+    timeout_seconds: float = Field(default=180.0, gt=0)
+    keep_alive: str = "5m"
+
+    history_turns: int = Field(default=6, ge=0, le=50)
+    """How many earlier exchanges to send back. Enough for "and the date?" to
+    resolve against the previous question, short enough that the document stays
+    the bulk of the context."""
+
+    max_context_characters: int = Field(default=24000, gt=0)
+    """Transcription budget. A long document is trimmed rather than refused,
+    and the user is told it was trimmed - silently answering from a third of a
+    contract would be the worse failure."""
+
+
 class PromptSettings(BaseModel):
     """User-editable prompts. Defaults come from :mod:`ocr_fusion.config.prompts`."""
 
@@ -334,6 +367,7 @@ class AppSettings(BaseModel):
     tesseract: TesseractSettings = Field(default_factory=TesseractSettings)
     prompts: PromptSettings = Field(default_factory=PromptSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
+    chat: ChatSettings = Field(default_factory=ChatSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
     documents: DocumentSettings = Field(default_factory=DocumentSettings)
     privacy: PrivacySettings = Field(default_factory=PrivacySettings)

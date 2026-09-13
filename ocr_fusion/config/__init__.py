@@ -8,6 +8,7 @@ Import settings from here rather than reaching into submodules::
 from ocr_fusion.config.prompts import DEFAULT_PROMPTS, render
 from ocr_fusion.config.schema import (
     AppSettings,
+    ChatSettings,
     DeliveryMode,
     DocumentSettings,
     FusionStrategy,
@@ -35,6 +36,7 @@ from ocr_fusion.config.store import (
 __all__ = [
     "DEFAULT_PROMPTS",
     "AppSettings",
+    "ChatSettings",
     "DeliveryMode",
     "DocumentSettings",
     "FusionStrategy",
