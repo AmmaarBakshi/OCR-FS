@@ -40,6 +40,7 @@ class OutputFormat(str, Enum):
     MARKDOWN = "md"
     JSON = "json"
     CSV = "csv"
+    XML = "xml"
 
 
 class FusionStrategy(str, Enum):

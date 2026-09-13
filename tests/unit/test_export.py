@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+from xml.etree import ElementTree
 
 import pytest
 
@@ -189,6 +190,49 @@ class TestJson:
     def test_configuration_snapshot_is_included(self, run_result, settings):
         payload = json.loads(export(run_result, settings, OutputFormat.JSON))
         assert payload["configuration"]["qwen"]["model"] == "qwen2.5vl:3b"
+
+
+class TestXml:
+    def test_is_well_formed(self, run_result, settings):
+        ElementTree.fromstring(export(run_result, settings, OutputFormat.XML))
+
+    def test_element_names_match_the_json_keys(self, run_result, settings):
+        """The two structured formats describe one schema, not two."""
+        payload = json.loads(export(run_result, settings, OutputFormat.JSON))
+        root = ElementTree.fromstring(export(run_result, settings, OutputFormat.XML))
+        assert {child.tag for child in root} == set(payload)
+
+    def test_unreported_metrics_are_nil_not_zero(self, run_result, settings):
+        root = ElementTree.fromstring(export(run_result, settings, OutputFormat.XML))
+        tesseract = root.findall("./engines/engine")[1]
+        tokens = tesseract.find("./tokens/input_tokens")
+        assert tokens.get("nil") == "true"
+        assert not (tokens.text or "").strip()
+
+    def test_reported_metrics_carry_their_value(self, run_result, settings):
+        root = ElementTree.fromstring(export(run_result, settings, OutputFormat.XML))
+        qwen = root.findall("./engines/engine")[0]
+        assert qwen.find("./tokens/input_tokens").text == "5937"
+
+    def test_lists_use_a_singular_child_name(self, run_result, settings):
+        root = ElementTree.fromstring(export(run_result, settings, OutputFormat.XML))
+        assert len(root.findall("./engines/engine")) == 2
+        assert len(root.findall("./engines/engine/pages/page")) == 4
+
+    def test_control_characters_do_not_break_the_file(self, settings, single_page_document):
+        """A noisy scan can emit a stray control byte; it must not poison the file."""
+        engine = OCRResult(
+            provider_id="qwen_vl",
+            provider_name="Qwen2.5-VL",
+            pages=[PageResult(1, "Total: 1200" + chr(7) + " INR")],
+        )
+        run = PipelineResult(document=single_page_document, engine_results=[engine])
+        root = ElementTree.fromstring(export(run, settings, OutputFormat.XML))
+        assert "1200 INR" in root.find("./final_result/text").text
+
+    def test_booleans_are_xml_booleans(self, run_result, settings):
+        root = ElementTree.fromstring(export(run_result, settings, OutputFormat.XML))
+        assert root.find("./pipeline/succeeded").text in {"true", "false"}
 
 
 class TestCsv:

@@ -17,9 +17,11 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
+from xml.etree import ElementTree as ET
 
 from ocr_fusion.config.schema import AppSettings, OutputFormat
 from ocr_fusion.pipeline.result import PipelineResult
@@ -192,8 +194,12 @@ def _engine_metric_lines(engine, settings: AppSettings) -> list[str]:
     return lines
 
 
-def export_json(result: PipelineResult, settings: AppSettings) -> str:
-    """The full stable schema, trimmed by the Output settings."""
+def _structured_payload(result: PipelineResult, settings: AppSettings) -> dict[str, Any]:
+    """The stable export schema, trimmed by the Output settings.
+
+    Shared by the JSON and XML exporters so the two can never describe the same
+    run differently - XML is a rendering of this dict, not a second schema.
+    """
     payload = result.as_dict(include_logs=settings.output.show_processing_logs)
     if not settings.output.show_raw_results:
         for engine in payload["engines"]:
@@ -201,7 +207,14 @@ def export_json(result: PipelineResult, settings: AppSettings) -> str:
             engine.pop("pages", None)
     if not settings.output.show_comparison:
         payload["comparison"] = None
-    return json.dumps(payload, indent=2, ensure_ascii=False)
+    return payload
+
+
+def export_json(result: PipelineResult, settings: AppSettings) -> str:
+    """The full stable schema, trimmed by the Output settings."""
+    return json.dumps(
+        _structured_payload(result, settings), indent=2, ensure_ascii=False
+    )
 
 
 def export_csv(result: PipelineResult, settings: AppSettings) -> str:
@@ -286,12 +299,95 @@ def export_csv(result: PipelineResult, settings: AppSettings) -> str:
     return buffer.getvalue()
 
 
+#: Element name used for a list entry whose parent key has no obvious singular.
+_LIST_ITEM = "item"
+
+
+def _is_xml_char(code: int) -> bool:
+    """Whether a code point is representable in XML 1.0."""
+    return (
+        code in (0x09, 0x0A, 0x0D)
+        or 0x20 <= code <= 0xD7FF
+        or 0xE000 <= code <= 0xFFFD
+        or 0x10000 <= code <= 0x10FFFF
+    )
+
+
+def _xml_safe(text: str) -> str:
+    """Drop characters XML 1.0 cannot represent.
+
+    OCR of a noisy scan can emit stray control bytes, and a single one of them
+    would leave the consumer with a file that no parser will open.
+    """
+    return "".join(char for char in text if _is_xml_char(ord(char)))
+
+
+def _xml_tag(key: str) -> str:
+    """Turn a payload key into a legal element name."""
+    tag = re.sub(r"[^A-Za-z0-9_.-]", "_", key)
+    return tag if tag[:1].isalpha() or tag[:1] == "_" else f"_{tag}"
+
+
+def _singular(key: str) -> str:
+    """The child element name for entries of a list called ``key``."""
+    if key.endswith("ies") and len(key) > 3:
+        return f"{key[:-3]}y"
+    if key.endswith("s") and not key.endswith("ss") and len(key) > 1:
+        return key[:-1]
+    return _LIST_ITEM
+
+
+def _xml_value(parent: ET.Element, key: str, value: Any) -> None:
+    """Append ``value`` to ``parent`` as one or more child elements.
+
+    ``None`` becomes an empty element marked ``nil``, never a zero or an empty
+    string: an unreported metric must stay distinguishable from a measured
+    zero, which is the same rule the JSON export follows.
+    """
+    if isinstance(value, dict):
+        child = ET.SubElement(parent, _xml_tag(key))
+        for sub_key, sub_value in value.items():
+            _xml_value(child, sub_key, sub_value)
+        return
+
+    if isinstance(value, list):
+        child = ET.SubElement(parent, _xml_tag(key))
+        item_tag = _singular(key)
+        for entry in value:
+            _xml_value(child, item_tag, entry)
+        return
+
+    child = ET.SubElement(parent, _xml_tag(key))
+    if value is None:
+        child.set("nil", "true")
+    elif isinstance(value, bool):
+        child.text = "true" if value else "false"
+    else:
+        child.text = _xml_safe(str(value))
+
+
+def export_xml(result: PipelineResult, settings: AppSettings) -> str:
+    """The same schema as the JSON export, rendered as XML.
+
+    Element names match the JSON keys one for one, so a consumer that already
+    reads one format can map the other without a lookup table.
+    """
+    root = ET.Element("ocr-result")
+    for key, value in _structured_payload(result, settings).items():
+        _xml_value(root, key, value)
+
+    ET.indent(root, space="  ")
+    return ET.tostring(root, encoding="unicode", xml_declaration=True)
+
+
+
 #: Exporter registry. Add a format by registering a callable here.
 EXPORTERS: dict[OutputFormat, Callable[[PipelineResult, AppSettings], str]] = {
     OutputFormat.TXT: export_txt,
     OutputFormat.MARKDOWN: export_markdown,
     OutputFormat.JSON: export_json,
     OutputFormat.CSV: export_csv,
+    OutputFormat.XML: export_xml,
 }
 
 MIME_TYPES: dict[OutputFormat, str] = {
@@ -299,6 +395,7 @@ MIME_TYPES: dict[OutputFormat, str] = {
     OutputFormat.MARKDOWN: "text/markdown",
     OutputFormat.JSON: "application/json",
     OutputFormat.CSV: "text/csv",
+    OutputFormat.XML: "application/xml",
 }
 
 
@@ -329,4 +426,5 @@ __all__ = [
     "export_json",
     "export_markdown",
     "export_txt",
+    "export_xml",
 ]
