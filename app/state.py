@@ -14,6 +14,7 @@ from typing import Any
 
 import streamlit as st
 
+from ocr_fusion.chat import ChatTurn
 from ocr_fusion.config import AppSettings, load_settings, save_settings
 from ocr_fusion.documents.models import Document
 from ocr_fusion.pipeline.result import PipelineResult
@@ -29,6 +30,8 @@ KEY_VIEW = "ofs_view"
 KEY_ZOOM = "ofs_zoom"
 KEY_HEALTH = "ofs_health"
 KEY_UPLOAD_TOKEN = "ofs_upload_token"
+KEY_CHAT = "ofs_chat"
+KEY_CHAT_PENDING = "ofs_chat_pending"
 
 
 def settings() -> AppSettings:
@@ -57,6 +60,9 @@ def set_document(doc: Document | None) -> None:
     st.session_state[KEY_RESULT] = None
     st.session_state[KEY_PAGE] = 1
     st.session_state[KEY_ZOOM] = 1.0
+    # The conversation was about the previous document; keeping it would let a
+    # follow-up question be answered against the wrong file.
+    clear_chat()
 
 
 def result() -> PipelineResult | None:
@@ -89,6 +95,32 @@ def zoom() -> float:
 
 def set_zoom(value: float) -> None:
     st.session_state[KEY_ZOOM] = max(0.25, min(3.0, value))
+
+
+def chat_history() -> list[ChatTurn]:
+    """Questions asked about the current document, oldest first."""
+    return st.session_state.setdefault(KEY_CHAT, [])
+
+
+def add_chat_turn(question: str, answer: str) -> None:
+    chat_history().append(ChatTurn(question=question, answer=answer))
+
+
+def clear_chat() -> None:
+    st.session_state[KEY_CHAT] = []
+
+
+def chat_pending() -> str:
+    """A question submitted but not yet answered.
+
+    Streamlit reruns the script on submit, so the question has to survive the
+    rerun that draws the thinking state before the model is called.
+    """
+    return st.session_state.get(KEY_CHAT_PENDING, "")
+
+
+def set_chat_pending(question: str) -> None:
+    st.session_state[KEY_CHAT_PENDING] = question
 
 
 def developer_mode() -> bool:
@@ -124,11 +156,17 @@ def reset_run() -> None:
     st.session_state[KEY_UPLOAD_ERROR] = ""
     st.session_state[KEY_PAGE] = 1
     st.session_state[KEY_ZOOM] = 1.0
+    clear_chat()
 
 
 __all__ = [
+    "KEY_CHAT",
     "KEY_UPLOAD_TOKEN",
     "KEY_VIEW",
+    "add_chat_turn",
+    "chat_history",
+    "chat_pending",
+    "clear_chat",
     "current_page",
     "developer_mode",
     "document",
@@ -136,6 +174,7 @@ __all__ = [
     "is_running",
     "reset_run",
     "result",
+    "set_chat_pending",
     "set_current_page",
     "set_document",
     "set_health",
