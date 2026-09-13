@@ -141,6 +141,13 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 .ofs-stage.is-failed { border-color: #f3c2c2; background: var(--danger-soft); }
 .ofs-stage.is-failed .ofs-stage-icon { color: var(--danger); }
 .ofs-stage.is-skipped { opacity: .55; }
+.ofs-stage.is-planned { border-style: dashed; }
+.ofs-stage-step {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; margin-bottom: 8px; border-radius: 50%;
+  background: var(--brand-soft); color: var(--brand);
+  font-size: 11.5px; font-weight: 700;
+}
 @keyframes ofs-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
 /* ---------- metric tiles ---------- */

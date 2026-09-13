@@ -81,17 +81,18 @@ def render_total(total_seconds: float, stages: list[Stage]) -> None:
 
 
 def render_placeholder(labels: list[str]) -> None:
-    """The pipeline before a run, with every stage waiting.
+    """The pipeline before a run, as a numbered roadmap.
 
     Showing the shape up front tells a client what is about to happen, which is
-    most of the point of the visualisation.
+    most of the point of the visualisation. The steps are numbered rather than
+    each captioned "Waiting": five identical status lines carry no information,
+    and the order is the thing worth reading.
     """
     tiles = "".join(
-        f'<div class="ofs-stage is-waiting">'
-        f'<span class="ofs-stage-icon">○</span>'
-        f'<div class="ofs-stage-name">{escape(label)}</div>'
-        f'<div class="ofs-stage-time">Waiting</div></div>'
-        for label in labels
+        f'<div class="ofs-stage is-planned">'
+        f'<span class="ofs-stage-step">{index}</span>'
+        f'<div class="ofs-stage-name">{escape(label)}</div></div>'
+        for index, label in enumerate(labels, start=1)
     )
     st.markdown(f'<div class="ofs-pipe">{tiles}</div>', unsafe_allow_html=True)
 
