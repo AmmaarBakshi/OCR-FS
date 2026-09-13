@@ -39,10 +39,18 @@ _HEAD_SHARE = 0.6
 
 @dataclass(slots=True)
 class ChatTurn:
-    """One exchange, kept so a follow-up question can resolve against it."""
+    """One exchange, kept so a follow-up question can resolve against it.
+
+    ``note`` and ``warning`` are what the interface needs to redraw the
+    exchange exactly as it first appeared - which model answered, or that the
+    document had to be trimmed. Neither is sent back to the model: only the
+    question and the answer are conversation.
+    """
 
     question: str
     answer: str
+    note: str = ""
+    warning: str = ""
 
 
 @dataclass(slots=True)

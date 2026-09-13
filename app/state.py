@@ -32,6 +32,7 @@ KEY_HEALTH = "ofs_health"
 KEY_UPLOAD_TOKEN = "ofs_upload_token"
 KEY_CHAT = "ofs_chat"
 KEY_CHAT_PENDING = "ofs_chat_pending"
+KEY_CHAT_ERROR = "ofs_chat_error"
 
 
 def settings() -> AppSettings:
@@ -102,12 +103,35 @@ def chat_history() -> list[ChatTurn]:
     return st.session_state.setdefault(KEY_CHAT, [])
 
 
-def add_chat_turn(question: str, answer: str) -> None:
-    chat_history().append(ChatTurn(question=question, answer=answer))
+def add_chat_turn(
+    question: str, answer: str, *, note: str = "", warning: str = ""
+) -> None:
+    chat_history().append(
+        ChatTurn(question=question, answer=answer, note=note, warning=warning)
+    )
 
 
 def clear_chat() -> None:
     st.session_state[KEY_CHAT] = []
+    st.session_state[KEY_CHAT_PENDING] = ""
+    clear_chat_error()
+
+
+def chat_error() -> tuple[str, str]:
+    """The last failed question, as ``(message, remedy)``.
+
+    Held in state because reporting it happens on the rerun after the failure,
+    by which point anything drawn during the failed attempt is gone.
+    """
+    return st.session_state.get(KEY_CHAT_ERROR, ("", ""))
+
+
+def set_chat_error(message: str, remedy: str = "") -> None:
+    st.session_state[KEY_CHAT_ERROR] = (message, remedy)
+
+
+def clear_chat_error() -> None:
+    st.session_state.pop(KEY_CHAT_ERROR, None)
 
 
 def chat_pending() -> str:
@@ -164,9 +188,11 @@ __all__ = [
     "KEY_UPLOAD_TOKEN",
     "KEY_VIEW",
     "add_chat_turn",
+    "chat_error",
     "chat_history",
     "chat_pending",
     "clear_chat",
+    "clear_chat_error",
     "current_page",
     "developer_mode",
     "document",
@@ -174,6 +200,7 @@ __all__ = [
     "is_running",
     "reset_run",
     "result",
+    "set_chat_error",
     "set_chat_pending",
     "set_current_page",
     "set_document",

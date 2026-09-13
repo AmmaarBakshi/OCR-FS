@@ -215,6 +215,11 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
   overflow-wrap: anywhere; line-height: 1.4; }
 .ofs-handover-meta { font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
 
+/* ---------- document chat ---------- */
+.ofs-chat-intro {
+  font-size: 13px; color: var(--ink-soft); line-height: 1.6;
+  margin-bottom: 12px;
+}
 /* ---------- empty state ---------- */
 .ofs-empty { text-align: center; padding: 44px 20px; color: var(--ink-faint); }
 .ofs-empty-icon { font-size: 40px; margin-bottom: 10px; }
