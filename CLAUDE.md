@@ -38,7 +38,7 @@ Pipeline: `Document → engines → Comparison → Fusion → PipelineResult`.
 `ocr_fusion/chat/` sits after the pipeline, not inside it: it answers questions
 about a finished transcription and never re-reads the page.
 
-Four extension seams, all working the same way — the caller depends on an
+Five extension seams, all working the same way — the caller depends on an
 interface or a registry entry, never on an implementation:
 
 | Seam | Add a… | Where |
