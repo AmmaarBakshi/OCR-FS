@@ -201,6 +201,20 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 }
 .ofs-output.mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 
+/* ---------- off-site handover ---------- */
+.ofs-handover {
+  border: 1px solid var(--line); border-radius: 12px; background: var(--canvas);
+  padding: 22px 20px; text-align: center; margin-bottom: 14px;
+}
+.ofs-handover-format {
+  display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .1em;
+  color: var(--brand); background: var(--brand-soft); border-radius: 6px;
+  padding: 4px 9px; margin-bottom: 11px;
+}
+.ofs-handover-name { font-size: 14.5px; font-weight: 620; color: var(--ink);
+  overflow-wrap: anywhere; line-height: 1.4; }
+.ofs-handover-meta { font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
+
 /* ---------- empty state ---------- */
 .ofs-empty { text-align: center; padding: 44px 20px; color: var(--ink-faint); }
 .ofs-empty-icon { font-size: 40px; margin-bottom: 10px; }

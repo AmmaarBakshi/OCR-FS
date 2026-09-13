@@ -9,7 +9,7 @@ import streamlit as st
 from app import state
 from app.components import comparison_view, metrics_view
 from app.theme import badge, empty_state, notice
-from ocr_fusion.config.schema import AppSettings, OutputFormat
+from ocr_fusion.config.schema import AppSettings, DeliveryMode, OutputFormat
 from ocr_fusion.export import MIME_TYPES, export_bytes, export_filename
 from ocr_fusion.ocr.interface import OCRResult, OCRStatus
 from ocr_fusion.pipeline.result import PipelineResult
@@ -24,7 +24,8 @@ _STATUS_BADGE = {
 
 def render(result: PipelineResult, settings: AppSettings) -> None:
     """Draw the results panel: final result, each engine, comparison, exports."""
-    tabs: list[str] = ["Final result"]
+    off_site = settings.output.delivery_mode is DeliveryMode.OFF_SITE
+    tabs: list[str] = ["Your file" if off_site else "Final result"]
     for engine in result.engine_results:
         tabs.append(_short_name(engine.provider_name))
     if settings.output.show_comparison and result.comparison is not None:
@@ -35,7 +36,10 @@ def render(result: PipelineResult, settings: AppSettings) -> None:
     index = 0
 
     with rendered[index]:
-        _render_final(result, settings)
+        if off_site:
+            _render_handover(result, settings)
+        else:
+            _render_final(result, settings)
     index += 1
 
     for engine in result.engine_results:
@@ -55,6 +59,71 @@ def render(result: PipelineResult, settings: AppSettings) -> None:
 def _short_name(name: str) -> str:
     """Trim a provider's parenthetical model suffix so tab labels stay readable."""
     return name.split(" (")[0]
+
+
+_FORMAT_DESCRIPTIONS = {
+    OutputFormat.TXT: "Plain transcription",
+    OutputFormat.MARKDOWN: "Formatted report",
+    OutputFormat.JSON: "Full structured data",
+    OutputFormat.CSV: "One row per page",
+    OutputFormat.XML: "Full structured data, as XML",
+    OutputFormat.HTML: "Self-contained web page",
+    OutputFormat.PDF: "Paginated report",
+}
+
+
+def _render_handover(result: PipelineResult, settings: AppSettings) -> None:
+    """Off-site delivery: lead with the file rather than the transcription."""
+    output_format = settings.output.download_format
+    try:
+        payload = export_bytes(result, settings, output_format)
+    except Exception as exc:  # noqa: BLE001 - a broken format must not cost the
+        # user their result; fall back to showing it.
+        notice(
+            f"The {output_format.value.upper()} file could not be prepared: "
+            f"{escape(str(exc))}<br>The transcription is shown below instead.",
+            "err",
+        )
+        _render_final(result, settings)
+        return
+
+    filename = export_filename(result, output_format)
+    st.markdown(
+        f'<div class="ofs-handover">'
+        f'<div class="ofs-handover-format">{output_format.value.upper()}</div>'
+        f'<div class="ofs-handover-name">{escape(filename)}</div>'
+        f'<div class="ofs-handover-meta">'
+        f"{_FORMAT_DESCRIPTIONS.get(output_format, 'Result file')} · "
+        f"{_readable_size(len(payload))}</div></div>",
+        unsafe_allow_html=True,
+    )
+    st.download_button(
+        f"Download {output_format.value.upper()}",
+        data=payload,
+        file_name=filename,
+        mime=MIME_TYPES[output_format],
+        key="ofs_handover_download",
+        type="primary",
+        use_container_width=True,
+    )
+    st.caption(
+        "Delivery is set to off site, so the result is prepared as a file. "
+        "Switch to on site in Settings › Output to read it in the page, or use "
+        "the Export tab for any other format."
+    )
+
+    with st.expander("Preview the transcription"):
+        _render_text(result.final_text)
+        _render_counts(result.final_text, settings)
+
+
+def _readable_size(size: int) -> str:
+    """A byte count a person can read at a glance."""
+    if size < 1024:
+        return f"{size} bytes"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
 
 
 def _render_final(result: PipelineResult, settings: AppSettings) -> None:
@@ -208,13 +277,6 @@ def _render_export(result: PipelineResult, settings: AppSettings) -> None:
         unsafe_allow_html=True,
     )
 
-    descriptions = {
-        OutputFormat.TXT: "Plain transcription",
-        OutputFormat.MARKDOWN: "Formatted report",
-        OutputFormat.JSON: "Full structured data",
-        OutputFormat.CSV: "One row per page",
-    }
-
     for output_format in OutputFormat:
         try:
             payload = export_bytes(result, settings, output_format)
@@ -228,7 +290,8 @@ def _render_export(result: PipelineResult, settings: AppSettings) -> None:
             st.markdown(
                 f'<div style="padding-top:6px;"><b>{output_format.value.upper()}</b> '
                 f'<span style="color:var(--ink-faint);font-size:12.5px;">'
-                f"— {descriptions[output_format]} · {len(payload):,} bytes</span></div>",
+                f"— {_FORMAT_DESCRIPTIONS[output_format]} · {_readable_size(len(payload))}"
+                f"</span></div>",
                 unsafe_allow_html=True,
             )
         with right:
