@@ -35,11 +35,13 @@ ENV_OVERRIDES: dict[str, str] = {
     "OCRFS_QWEN_TIMEOUT": "qwen.timeout_seconds",
     "OCRFS_QWEN_TEMPERATURE": "qwen.temperature",
     "OCRFS_QWEN_MAX_TOKENS": "qwen.max_tokens",
+    "OCRFS_QWEN_KEEP_ALIVE": "qwen.keep_alive",
     "OCRFS_UNLIMITED_BACKEND": "unlimited_ocr.backend",
     "OCRFS_UNLIMITED_ENDPOINT": "unlimited_ocr.endpoint",
     "OCRFS_UNLIMITED_API_KEY": "unlimited_ocr.api_key",
     "OCRFS_UNLIMITED_MODEL_ID": "unlimited_ocr.model_id",
     "OCRFS_UNLIMITED_OLLAMA_MODEL": "unlimited_ocr.ollama_model",
+    "OCRFS_UNLIMITED_KEEP_ALIVE": "unlimited_ocr.keep_alive",
     "OCRFS_UNLIMITED_EXECUTABLE": "unlimited_ocr.executable",
     "OCRFS_UNLIMITED_DEVICE": "unlimited_ocr.device",
     "OCRFS_FUSION_STRATEGY": "pipeline.fusion_strategy",
@@ -49,6 +51,10 @@ ENV_OVERRIDES: dict[str, str] = {
     "OCRFS_DEVELOPER_MODE": "general.developer_mode",
     "OCRFS_PERSIST_DOCUMENTS": "privacy.persist_documents",
 }
+
+#: Variables whose value is taken verbatim, bypassing :func:`_coerce`.
+#: A duration like ``0`` is a string, not the boolean ``_FALSE`` would make it.
+VERBATIM_ENV = frozenset({"OCRFS_QWEN_KEEP_ALIVE", "OCRFS_UNLIMITED_KEEP_ALIVE"})
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
@@ -116,7 +122,8 @@ def env_overrides() -> dict[str, Any]:
         raw = os.environ.get(env_name)
         if raw is None or raw == "":
             continue
-        _assign(overrides, dotted, _coerce(raw))
+        value = raw if env_name in VERBATIM_ENV else _coerce(raw)
+        _assign(overrides, dotted, value)
     return overrides
 
 

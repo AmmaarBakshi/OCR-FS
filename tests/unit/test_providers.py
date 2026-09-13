@@ -27,6 +27,7 @@ from ocr_fusion.ocr.postprocess import clean_ocr_text
 from ocr_fusion.ocr.providers.qwen_vl import QwenVLProvider
 from ocr_fusion.ocr.providers.unlimited import UnlimitedOCRProvider
 from ocr_fusion.ocr.providers.unlimited.base import BackendError, PageOutput
+from ocr_fusion.ocr.providers.unlimited.ollama_backend import OllamaBackend
 from ocr_fusion.ocr.registry import ProviderRegistry, ProviderSpec, default_registry
 
 
@@ -256,6 +257,21 @@ class TestUnlimitedProvider:
         settings.unlimited_ocr.backend = backend
         provider = UnlimitedOCRProvider(settings)
         assert provider.backend.backend_id == backend.value
+
+    def test_substitute_backend_sends_the_configured_keep_alive(
+        self, settings, single_page_document
+    ):
+        """Stage 2 must honour the setting, not a hardcoded duration.
+
+        The engines run in sequence, so ``0`` here is what frees Stage 1's
+        model before this one loads on a memory-constrained machine.
+        """
+        settings.unlimited_ocr.backend = UnlimitedBackend.OLLAMA
+        settings.unlimited_ocr.keep_alive = "0"
+        client = StubOllama(models=["deepseek-ocr:3b"])
+        backend = OllamaBackend(settings.unlimited_ocr, settings.ollama, client)
+        backend.run_page(single_page_document.pages[0], "<image> Free OCR.")
+        assert client.calls[0]["keep_alive"] == "0"
 
     def test_substitute_backend_is_labelled_honestly(self, settings):
         settings.unlimited_ocr.backend = UnlimitedBackend.OLLAMA

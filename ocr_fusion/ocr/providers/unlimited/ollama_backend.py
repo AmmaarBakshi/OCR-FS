@@ -95,7 +95,7 @@ class OllamaBackend(UnlimitedBackendBase):
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
                 timeout=self.config.timeout_seconds,
-                keep_alive="5m",
+                keep_alive=self.config.keep_alive,
             )
         except OllamaModelMissingError as exc:
             raise BackendError(exc.message, exc.remedy, retryable=False) from exc
@@ -132,6 +132,7 @@ class OllamaBackend(UnlimitedBackendBase):
             "timeout_seconds": self.config.timeout_seconds,
             "max_tokens": self.config.max_tokens,
             "temperature": self.config.temperature,
+            "keep_alive": self.config.keep_alive,
             "processing_location": self.processing_location.value,
         }
 

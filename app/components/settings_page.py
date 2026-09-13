@@ -306,6 +306,17 @@ def _unlimited(draft: AppSettings) -> None:
         config.ollama_model = st.text_input(
             "Local model", value=config.ollama_model, help="For example: deepseek-ocr:3b"
         )
+        config.keep_alive = st.text_input(
+            "Keep model loaded for",
+            value=config.keep_alive,
+            help=(
+                "How long Ollama holds the model in memory. '5m' avoids reloading "
+                "between pages. On a machine with limited RAM, set this and the "
+                "same Qwen setting to '0' so each engine frees memory before the "
+                "next one loads."
+            ),
+            key="ofs_unlimited_keep_alive",
+        )
 
     left, right = st.columns(2)
     with left:

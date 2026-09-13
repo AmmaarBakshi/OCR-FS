@@ -163,6 +163,12 @@ class UnlimitedOCRSettings(BaseModel):
 
     # --- ollama backend (local substitute) --------------------------------
     ollama_model: str = "deepseek-ocr:3b"
+    keep_alive: str = "5m"
+    """How long Ollama keeps the substitute model resident between pages.
+
+    Mirrors :attr:`QwenSettings.keep_alive`. Set to ``0`` when both models
+    cannot be resident at once: the engines run in sequence, so freeing Stage 1
+    before Stage 2 loads is what makes a two-engine run fit in limited RAM."""
 
     # --- shared -----------------------------------------------------------
     max_tokens: int = Field(default=8192, gt=0)

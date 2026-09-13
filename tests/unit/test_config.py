@@ -124,6 +124,27 @@ class TestEnvironmentOverrides:
         monkeypatch.setenv("OCRFS_OLLAMA_HOST", "")
         assert "ollama" not in env_overrides()
 
+    def test_keep_alive_of_zero_stays_a_string(self, monkeypatch):
+        """``0`` is a duration, not a boolean.
+
+        Generic coercion would read it as ``False``, which the string-typed
+        field rejects - and ``0`` is the documented remedy for a machine that
+        cannot hold both models at once.
+        """
+        monkeypatch.setenv("OCRFS_QWEN_KEEP_ALIVE", "0")
+        monkeypatch.setenv("OCRFS_UNLIMITED_KEEP_ALIVE", "0")
+        overrides = env_overrides()
+        assert overrides["qwen"]["keep_alive"] == "0"
+        assert overrides["unlimited_ocr"]["keep_alive"] == "0"
+
+    def test_keep_alive_reaches_the_settings(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("OCRFS_SETTINGS_PATH", str(tmp_path / "settings.json"))
+        monkeypatch.setenv("OCRFS_QWEN_KEEP_ALIVE", "0")
+        monkeypatch.setenv("OCRFS_UNLIMITED_KEEP_ALIVE", "0")
+        settings = load_settings()
+        assert settings.qwen.keep_alive == "0"
+        assert settings.unlimited_ocr.keep_alive == "0"
+
     def test_backend_can_be_selected_by_environment(self, monkeypatch, tmp_path):
         # Point the default path at a temp dir so the test never reads or
         # depends on the developer's own settings file.
