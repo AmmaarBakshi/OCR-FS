@@ -90,6 +90,44 @@ Return the reconciled transcription only.\
 """
 
 
+CHAT_SYSTEM_PROMPT = """\
+You answer questions about a single document that has already been transcribed
+for you. The transcription is the only source you have and the only one you are
+allowed to use.
+
+Rules:
+- Answer only from the transcription. Never use outside knowledge, and never
+  fill a gap with what a document of this kind usually says.
+- If the transcription does not contain the answer, say so plainly and stop.
+  "The document does not say" is a correct and useful answer.
+- Quote figures, dates, names and reference numbers exactly as transcribed. Do
+  not reformat, round, convert or correct them.
+- If the transcription is garbled at the point that matters, say which part is
+  unclear rather than guessing what it was meant to say.
+- When the answer is a list or a table, lay it out as one.
+- Answer the question that was asked, briefly. No preamble, no restating the
+  question, no closing offer of further help.
+
+The transcription came from OCR and may contain recognition errors. Report what
+it says; do not repair it.\
+"""
+
+CHAT_USER_PROMPT = """\
+--- DOCUMENT: {filename} ---
+{document}
+--- END OF DOCUMENT ---
+{history}
+Question: {question}\
+"""
+
+CHAT_HISTORY_PROMPT = """\
+
+--- EARLIER IN THIS CONVERSATION ---
+{turns}
+--- END ---
+"""
+
+
 class _SafeFormatter(string.Formatter):
     """Formatter that leaves unknown placeholders in place instead of raising."""
 
@@ -121,6 +159,8 @@ DEFAULT_PROMPTS: dict[str, str] = {
     "unlimited_ocr_task": UNLIMITED_OCR_PROMPT,
     "fusion_system": FUSION_SYSTEM_PROMPT,
     "fusion_user": FUSION_USER_PROMPT,
+    "chat_system": CHAT_SYSTEM_PROMPT,
+    "chat_user": CHAT_USER_PROMPT,
 }
 
 __all__ = [
@@ -130,6 +170,9 @@ __all__ = [
     "UNLIMITED_OCR_LAYOUT_PROMPT",
     "FUSION_SYSTEM_PROMPT",
     "FUSION_USER_PROMPT",
+    "CHAT_SYSTEM_PROMPT",
+    "CHAT_USER_PROMPT",
+    "CHAT_HISTORY_PROMPT",
     "DEFAULT_PROMPTS",
     "render",
 ]

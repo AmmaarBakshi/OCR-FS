@@ -219,6 +219,8 @@ class PromptSettings(BaseModel):
     unlimited_ocr_task: str = default_prompts.UNLIMITED_OCR_PROMPT
     fusion_system: str = default_prompts.FUSION_SYSTEM_PROMPT
     fusion_user: str = default_prompts.FUSION_USER_PROMPT
+    chat_system: str = default_prompts.CHAT_SYSTEM_PROMPT
+    chat_user: str = default_prompts.CHAT_USER_PROMPT
 
     def reset_field(self, name: str) -> None:
         """Restore a single prompt to its packaged default."""
