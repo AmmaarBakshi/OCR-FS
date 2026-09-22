@@ -371,6 +371,16 @@ def notice(message: str, kind: str = "info", title: str = "") -> None:
     )
 
 
+def section_title(text: str) -> None:
+    """A small heading inside a card, where a real heading would be too loud."""
+    st.markdown(
+        '<div style="font-size:11.5px;font-weight:650;text-transform:uppercase;'
+        'letter-spacing:.09em;color:var(--ink-faint);margin:2px 0 10px;">'
+        f"{text}</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def empty_state(icon: str, title: str, text: str = "") -> None:
     st.markdown(
         f'<div class="ofs-empty"><div class="ofs-empty-icon">{icon}</div>'
@@ -387,4 +397,5 @@ __all__ = [
     "card",
     "empty_state",
     "notice",
+    "section_title",
 ]

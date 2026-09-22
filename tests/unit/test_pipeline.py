@@ -393,3 +393,13 @@ class TestCascade:
         OCRPipeline(settings, [qwen_like, unlimited_like]).execute(single_page_document)
         assert qwen_like.process_calls == 1
         assert unlimited_like.process_calls == 1
+
+    def test_pages_no_engine_can_read_are_reported_not_dropped(
+        self, settings, scanned_document
+    ):
+        # A result quietly missing pages is worse than a slow one.
+        result = OCRPipeline(settings, []).execute(scanned_document)
+        assert any(
+            "need an OCR engine and none is enabled" in event.message
+            for event in result.log.events
+        )

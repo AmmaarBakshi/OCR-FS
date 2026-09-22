@@ -7,7 +7,7 @@ from html import escape
 import streamlit as st
 
 from app import state
-from app.components import comparison_view, metrics_view
+from app.components import comparison_view, metrics_view, review_panel
 from app.theme import badge, empty_state, notice
 from ocr_fusion.config.schema import AppSettings, DeliveryMode, OutputFormat
 from ocr_fusion.export import MIME_TYPES, export_bytes, export_filename
@@ -30,6 +30,10 @@ def render(result: PipelineResult, settings: AppSettings) -> None:
         tabs.append(_short_name(engine.provider_name))
     if settings.output.show_comparison and result.comparison is not None:
         tabs.append("Comparison")
+    # Named for the question it answers, not for the machinery behind it: the
+    # user wants to know which pages they still have to look at.
+    flagged = sum(1 for score in result.confidence if score.needs_second_opinion)
+    tabs.append(f"To check ({flagged})" if flagged else "To check")
     tabs.append("Export")
 
     rendered = st.tabs(tabs)
@@ -51,6 +55,10 @@ def render(result: PipelineResult, settings: AppSettings) -> None:
         with rendered[index]:
             comparison_view.render(result.comparison, settings)
         index += 1
+
+    with rendered[index]:
+        review_panel.render(result, settings)
+    index += 1
 
     with rendered[index]:
         _render_export(result, settings)

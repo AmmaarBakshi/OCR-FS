@@ -308,6 +308,14 @@ class OCRPipeline:
                 self.log.skip_stage(key, "no page carries a usable text layer")
 
         if not ocr_providers:
+            if ocr_pages:
+                # Silence here would hand back a document with pages quietly
+                # missing from it, which is the one outcome worse than slow.
+                self.log.warning(
+                    f"{len(ocr_pages)} page(s) need an OCR engine and none is "
+                    "enabled, so those pages are missing from the result: "
+                    + ", ".join(str(n) for n in ocr_pages)
+                )
             return results
 
         primary, *fallbacks = ocr_providers
