@@ -91,9 +91,30 @@ to confirm both stages are ready before your first run.
 1. Drag a PDF or image onto the upload area.
 2. Press **Run OCR**. The pipeline display shows each stage as it runs.
 3. Read the **Final result**, or switch tabs to see each engine's raw output.
-4. Open **Comparison** to see where the engines disagreed.
-5. Ask a question about the document in the box below the results.
-6. Export from the **Export** tab.
+4. Open **To check** to see which pages a model read, which were answered from
+   the document's own text, and which few pages are worth a human look.
+5. Open **Comparison** to see where two engines disagreed.
+6. Ask a question about the document in the box below the results.
+7. Export from the **Export** tab.
+
+### Many documents at once
+
+```bash
+python -m ocr_fusion.cli batch ./inbox -o ./results
+```
+
+Each document's result is written the moment it finishes, and progress is
+checkpointed on every change. Run the same command again to continue: finished
+documents are skipped and new ones picked up, so a batch stopped after nine
+hours costs nothing to resume and a crash costs one document.
+
+```bash
+python -m ocr_fusion.cli batch ./inbox -o ./results --status   # progress only
+python -m ocr_fusion.cli batch ./inbox -o ./results --cache    # remember pages
+```
+
+Documents whose pages were flagged come back as **review required** rather
+than silently passing — transcribed and usable, with the caveat attached.
 
 ### How you get the result
 
@@ -265,21 +286,87 @@ few seconds. Integration tests skip themselves when their runtime is missing.
 
 ## Performance
 
-Measured on an Intel i5-10310U (4 cores, no GPU), 16 GB RAM, one A4 page at
-150 DPI:
+### Where the time goes
 
-| Stage | Cold | Warm |
+One A4 page at 150 DPI through `qwen2.5vl:3b`, on an Intel i5-10310U
+(4 cores, 16 GB, no usable GPU):
+
+| Stage | Time | Share |
 |---|---|---|
-| Qwen2.5-VL | ~7 min (includes model load) | ~70 s |
-| Stage 2 (`deepseek-ocr:3b`) | ~2 min | ~100 s |
-| Comparison + fusion | — | < 0.1 s |
+| PDF render | 0.18 s | 0.04% |
+| PNG encode | 0.14 s | 0.03% |
+| Model load | 15.5 s | 3% |
+| **Encoding the image — 2,979 image tokens** | **415.9 s** | **84.6%** |
+| Writing the answer — 283 tokens at 4.85 tok/s | 58.4 s | 12% |
 
-A GPU changes this by an order of magnitude. To speed up a CPU demo: lower
-**PDF quality (DPI)** in Settings, set a **page limit**, or disable one engine.
+The image is the cost, not the answer. Everything below follows from that.
 
-If both models will not fit in RAM at once, set **Keep model loaded for** to
-`0` in Settings › OCR Models so the first model unloads before the second
-loads.
+### Most pages never reach a model
+
+Across a 1,666-page reference corpus of real client documents — tax returns,
+bank statements, insurance schedules, scanned deeds:
+
+| | |
+|---|---|
+| Pages that already carry their own text | 1,415 (**84.9%**) |
+| Pages that genuinely need OCR | 251 (15.1%) |
+
+A born-digital PDF states its text exactly. Recognising it again with a vision
+model costs about 250,000 times as much CPU **and is less accurate**, because
+it replaces a fact with a transcription. So the pipeline reads the text layer
+first and only sends a model what is left.
+
+Measured, on this machine:
+
+| Document | Old pipeline | Now |
+|---|---|---|
+| 65-page tax return (born-digital) | ~17 h | **1.0 s** |
+| 309 pages across six tax returns | ~84 h | **~3 s** |
+| 20-page mixed statement | ~5 h | 3 pages of OCR, the other 17 free |
+
+### Choosing a resolution
+
+DPI is the main lever on a page that *does* need a model, because image tokens
+scale with pixel area. Swept on a real form page, scored against the text that
+page was authored with:
+
+| DPI | Image tokens | Seconds | Word error | Recall |
+|---|---|---|---|---|
+| 72 | 1,338 | 282 | 0.101 | 92.0% |
+| 96 | 1,367 | 326 | 0.080 | 92.7% |
+| **120** (default) | 1,957 | 398 | 0.028 | 99.0% |
+| 150 | 2,979 | 551 | 0.021 | 99.7% |
+
+Lower is a trap. Below 120 the error rate nearly triples — blurred text does
+not merely get misread, it makes the model ramble, so output tokens go up too.
+
+Pick a point with `--profile fast|balanced|accurate`, or in Settings › Speed.
+`python -m ocr_fusion.cli profiles` prints the table above with the current
+setting marked.
+
+### Measuring it yourself
+
+Every number here came from the bundled harness, on real documents:
+
+```bash
+python -m ocr_fusion.cli bench ./your-documents -o report.json
+python -m ocr_fusion.cli accuracy ./your-documents --profile balanced
+```
+
+`accuracy` needs no labelled data: a born-digital page is its own answer key,
+so it renders the page, transcribes the image, and scores the result against
+the text the file already contained. Figures are scored separately from words,
+because a mistranscribed amount is the error that actually costs something.
+
+### If it is still slow
+
+- Check Settings › Speed. Most of the time is in options gathered there.
+- Turn on **Never read the same page twice** for batches that repeat pages.
+- `deepseek-ocr:3b` is pulled unquantised (F16, 6.7 GB) against
+  `qwen2.5vl:3b` at 3.2 GB. With both resident on a 16 GB machine you will
+  swap, and swapping is slower than not running. Leave the second engine as a
+  fallback rather than a second full pass.
+- A GPU changes all of this by an order of magnitude.
 
 ---
 
