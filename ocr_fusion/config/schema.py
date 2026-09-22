@@ -158,7 +158,17 @@ class QwenSettings(BaseModel):
     model: str = "qwen2.5vl:3b"
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     top_p: float = Field(default=0.9, ge=0.0, le=1.0)
-    max_tokens: int = Field(default=4096, gt=0)
+    max_tokens: int = Field(default=3072, gt=0)
+    """Ceiling on the transcription, and on how long a bad page can waste.
+
+    The densest page in the reference corpus is ~1,150 words, about 1,700
+    tokens, so this leaves comfortable headroom for real content. It matters
+    because of the failure mode: a small VLM given a page it cannot read
+    starts repeating a line and keeps going until the budget runs out. At the
+    ~5.5 tokens/second this machine manages, every 1,000 tokens of that is
+    three minutes spent on nothing. Truncation is detected and reported, so a
+    page that genuinely needs more says so rather than failing silently."""
+
     timeout_seconds: float = Field(default=600.0, gt=0)
     """Generous by default: a cold 3B VLM load on CPU can exceed five
     minutes before the first token, and a timeout there wastes the load."""
@@ -466,10 +476,27 @@ class DocumentSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    pdf_render_dpi: int = Field(default=150, ge=72, le=600)
-    """150 DPI keeps a rendered A4 page near 1240x1755, which transcribes
-    accurately while roughly halving image tokens against 200 DPI - the
-    difference between a tolerable and a painful CPU demo."""
+    pdf_render_dpi: int = Field(default=120, ge=72, le=600)
+    """Render resolution, and the single biggest lever on inference cost.
+
+    A vision model's prompt is mostly image tokens, and image tokens scale
+    with pixel area - so on CPU, where 85% of a page's cost is encoding the
+    image rather than writing the answer, DPI *is* the speed control.
+
+    Measured on a real tax-form page against its own text layer
+    (qwen2.5vl:3b, this machine):
+
+        DPI   image tokens   seconds   word error   recall
+         72          1,338       282        0.101    0.920
+         96          1,367       326        0.080    0.927
+        120          1,957       398        0.028    0.990
+        150          2,979       551        0.021    0.997
+
+    120 is the knee. It costs 28% less time than 150 for 0.7 points of
+    recall, and below it accuracy falls off a cliff - at 96 the word error
+    rate nearly triples, because blurred text does not merely get misread,
+    it makes the model ramble and repeat. Cheaper is not automatically
+    faster and is never automatically better."""
 
     max_image_dimension: int = Field(default=2048, ge=256)
     """Longest edge, in pixels. Larger pages are downscaled before inference."""
