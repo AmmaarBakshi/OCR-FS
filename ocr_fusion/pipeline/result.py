@@ -146,6 +146,17 @@ class PipelineResult:
                 for result in self.engine_results
             ],
             "comparison": self.comparison.as_dict() if self.comparison else None,
+            # Added alongside the existing keys rather than inside them, so a
+            # consumer written against schema 1.0 keeps working and a new one
+            # can see why a page cost what it cost.
+            "routing": self.routing.summary() if self.routing else None,
+            "review": {
+                "pages_checked": len(self.confidence),
+                "pages_flagged": sum(
+                    1 for score in self.confidence if score.needs_second_opinion
+                ),
+                "pages": [score.as_dict() for score in self.confidence],
+            },
             "final_result": {
                 "text": self.final_text,
                 "character_count": len(self.final_text),
