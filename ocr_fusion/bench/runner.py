@@ -285,7 +285,7 @@ def benchmark_accuracy(
     import fitz
 
     from ocr_fusion.bench.accuracy import score_page
-    from ocr_fusion.documents.models import DocumentPage
+    from ocr_fusion.documents.models import Document, DocumentKind, DocumentPage
     from ocr_fusion.ocr.registry import default_registry
 
     provider_id = "qwen_vl" if settings.qwen.enabled else "unlimited_ocr"
@@ -307,22 +307,37 @@ def benchmark_accuracy(
         finally:
             pdf.close()
 
-        page = DocumentPage(
-            number=entry.page_number, image_bytes=image, width=width, height=height
+        # A one-page document through the provider's public interface. Going
+        # through process() rather than a private per-page method means this
+        # measures the same path a real run takes, including retries.
+        single = Document(
+            filename=Path(entry.source).name,
+            kind=DocumentKind.PDF,
+            pages=[
+                DocumentPage(
+                    number=entry.page_number,
+                    image_bytes=image,
+                    width=width,
+                    height=height,
+                )
+            ],
         )
         started = time.perf_counter()
-        page_result = provider._process_page(page)  # noqa: SLF001 - one page, no document
+        result = provider.process(single)
         elapsed = time.perf_counter() - started
         durations.append(elapsed)
 
-        score = score_page(entry.page_number, entry.reference, page_result.text)
+        page_result = result.pages[0] if result.pages else None
+        text = page_result.text if page_result else ""
+        score = score_page(entry.page_number, entry.reference, text)
         scores.append(
             {
                 "source": Path(entry.source).name,
                 **score.as_dict(),
                 "seconds": round(elapsed, 2),
-                "input_tokens": page_result.tokens.input_tokens,
-                "output_tokens": page_result.tokens.output_tokens,
+                "input_tokens": page_result.tokens.input_tokens if page_result else None,
+                "output_tokens": page_result.tokens.output_tokens if page_result else None,
+                "error": result.error,
             }
         )
 

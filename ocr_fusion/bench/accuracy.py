@@ -36,9 +36,18 @@ _SPACE = re.compile(r"\s+")
 _CER_CHAR_LIMIT = 20_000
 
 
+#: Punctuation that carries meaning inside a token but not at its edges.
+#: "1,325.50" and "10:30" must survive intact; "(due" and "Total:" must fold
+#: to "due" and "total", or every engine that punctuates differently is
+#: scored as having misread the word.
+_EDGE_PUNCTUATION = ".,:;()-/$%"
+
+
 def normalise(text: str) -> str:
     """Fold text to the form the metrics compare."""
-    return _SPACE.sub(" ", _KEEP.sub(" ", text.lower())).strip()
+    folded = _SPACE.sub(" ", _KEEP.sub(" ", text.lower())).strip()
+    tokens = [token.strip(_EDGE_PUNCTUATION) for token in folded.split()]
+    return " ".join(token for token in tokens if token)
 
 
 def _ratio(reference: list, hypothesis: list) -> float:
