@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ocr_fusion.config.schema import AppSettings, FusionStrategy
-from ocr_fusion.ocr.interface import OCRResult
+from ocr_fusion.ocr.interface import OCRResult, OCRStatus
 from ocr_fusion.ocr.ollama_client import OllamaClient, OllamaError
 from ocr_fusion.pipeline.comparison import DiffKind, compare_texts, normalise_line
 
@@ -151,19 +151,34 @@ def fuse_line_vote(results: list[OCRResult], settings: AppSettings) -> FusionRes
         )
 
     first, second = usable[0], usable[1]
-    comparison = compare_texts(
-        first.text,
-        second.text,
-        engine_a=first.provider_name,
-        engine_b=second.provider_name,
+    text, detail = merge_by_line(
+        first.text, second.text, first.provider_name, second.provider_name
     )
+    return FusionResult(
+        text=text,
+        strategy="line_vote",
+        sources=[first.provider_name, second.provider_name],
+        detail=detail,
+    )
+
+
+def merge_by_line(
+    text_a: str, text_b: str, engine_a: str = "A", engine_b: str = "B"
+) -> tuple[str, str]:
+    """Line-merge two transcriptions of the same content.
+
+    Returns the merged text and a one-line explanation. Split out of
+    :func:`fuse_line_vote` so the same merge can be applied to a whole
+    document or to a single page, which is what page-wise fusion needs.
+    """
+    comparison = compare_texts(text_a, text_b, engine_a=engine_a, engine_b=engine_b)
 
     # Lines each engine produced anywhere in its output. Used to tell a line
     # that is genuinely unique to one engine from one both engines produced but
     # placed differently - the alignment is order-preserving, so it cannot match
     # the second kind and would otherwise emit it twice.
-    lines_in_a = {normalise_line(line) for line in first.text.splitlines() if line.strip()}
-    lines_in_b = {normalise_line(line) for line in second.text.splitlines() if line.strip()}
+    lines_in_a = {normalise_line(line) for line in text_a.splitlines() if line.strip()}
+    lines_in_b = {normalise_line(line) for line in text_b.splitlines() if line.strip()}
 
     merged: list[str] = []
     emitted: set[str] = set()
@@ -205,12 +220,7 @@ def fuse_line_vote(results: list[OCRResult], settings: AppSettings) -> FusionRes
             f" {duplicates} line{'s' if duplicates != 1 else ''} both engines "
             "placed differently were merged rather than repeated."
         )
-    return FusionResult(
-        text="\n".join(merged).strip(),
-        strategy="line_vote",
-        sources=[first.provider_name, second.provider_name],
-        detail=detail,
-    )
+    return "\n".join(merged).strip(), detail
 
 
 def _is_repositioned_duplicate(
@@ -377,6 +387,118 @@ def _verify_against_sources(fused: str, text_a: str, text_b: str) -> str | None:
     return None
 
 
+# -- page-wise assembly ----------------------------------------------------
+
+
+def fuse_pagewise(results: list[OCRResult], settings: AppSettings) -> FusionResult:
+    """Assemble the document one page at a time.
+
+    The whole-document strategies assume every engine transcribed the same
+    thing, which stops being true the moment engines divide the work. In
+    cascade mode the text layer might answer pages 1-16, the primary engine
+    pages 17-19, and a fallback engine only page 18 - so "pick the longest
+    output" or "merge two texts line by line" would compare a chapter against
+    a paragraph and produce nonsense.
+
+    So the unit of reconciliation is the page. Each page is taken from
+    whichever engine read it; the configured strategy is applied only to the
+    pages more than one engine read, which in cascade mode is exactly the
+    pages verification flagged. Page order is the document's, never the order
+    the engines happened to run in.
+    """
+    usable = [r for r in results if r.succeeded]
+    if not usable:
+        return _no_input_result("pagewise")
+
+    # Page number -> (engine name, text), in engine order.
+    versions: dict[int, list[tuple[str, str]]] = {}
+    for result in usable:
+        for page in result.pages:
+            if page.status is not OCRStatus.SUCCESS:
+                continue
+            versions.setdefault(page.page_number, []).append(
+                (result.provider_name, page.text)
+            )
+
+    if not versions:
+        return _no_input_result("pagewise")
+
+    strategy = settings.pipeline.fusion_strategy
+    parts: list[str] = []
+    contested = 0
+    sources: list[str] = []
+
+    for number in sorted(versions):
+        candidates = [(name, text) for name, text in versions[number] if text.strip()]
+        if not candidates:
+            # A blank page is a real outcome, not a gap to fill.
+            continue
+        for name, _ in candidates:
+            if name not in sources:
+                sources.append(name)
+        if len(candidates) == 1:
+            parts.append(candidates[0][1])
+            continue
+
+        contested += 1
+        parts.append(_reconcile_page(candidates, strategy, settings))
+
+    engines = len(sources)
+    detail = (
+        f"Assembled {len(parts)} page(s) from {engines} "
+        f"source{'s' if engines != 1 else ''}."
+    )
+    if contested:
+        detail += (
+            f" {contested} page(s) were read by more than one engine and "
+            f"reconciled by {strategy.value}."
+        )
+    else:
+        detail += " No page needed reconciling, because no page was read twice."
+
+    return FusionResult(
+        text="\n\n".join(parts).strip(),
+        strategy="pagewise",
+        sources=sources,
+        detail=detail,
+    )
+
+
+def _reconcile_page(
+    candidates: list[tuple[str, str]],
+    strategy: FusionStrategy,
+    settings: AppSettings,
+) -> str:
+    """Reconcile the versions of one page that several engines produced."""
+    if strategy is FusionStrategy.PREFER_PRIMARY:
+        return candidates[0][1]
+    if strategy is FusionStrategy.PREFER_LONGEST:
+        return max(candidates, key=lambda c: len(c[1]))[1]
+
+    (name_a, text_a), (name_b, text_b) = candidates[0], candidates[1]
+    if strategy is FusionStrategy.LLM:
+        # Reusing the whole-document LLM path gives this page the same
+        # containment check and the same deterministic fallback.
+        single = [
+            _single_page_result(name, text) for name, text in (candidates[0], candidates[1])
+        ]
+        return fuse_with_llm(single, settings).text
+
+    merged, _ = merge_by_line(text_a, text_b, name_a, name_b)
+    return merged
+
+
+def _single_page_result(provider_name: str, text: str) -> OCRResult:
+    """Wrap one page's text as an OCRResult, for reuse of the whole-text paths."""
+    from ocr_fusion.ocr.interface import PageResult
+
+    return OCRResult(
+        provider_id=provider_name,
+        provider_name=provider_name,
+        pages=[PageResult(page_number=1, text=text)],
+    )
+
+
 def _no_input_result(strategy: str) -> FusionResult:
     return FusionResult(
         text="",
@@ -408,7 +530,9 @@ __all__ = [
     "FusionResult",
     "fuse",
     "fuse_line_vote",
+    "fuse_pagewise",
     "fuse_prefer_longest",
     "fuse_prefer_primary",
     "fuse_with_llm",
+    "merge_by_line",
 ]

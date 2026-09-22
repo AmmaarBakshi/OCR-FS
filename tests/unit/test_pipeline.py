@@ -1,15 +1,42 @@
-"""Pipeline execution, stage tracking and failure isolation."""
+"""Pipeline execution, stage tracking and failure isolation.
+
+The pipeline has two engine modes and both are covered here. The classes
+below that declare ``_all_engines`` describe the all-engines contract - every
+enabled engine reads every page - because that is what the behaviour they
+assert is about. :class:`TestCascade` covers the default, where each engine
+handles only what the engines before it could not.
+"""
 
 from __future__ import annotations
 
+import pytest
+
+from ocr_fusion.config.schema import EngineMode
 from ocr_fusion.ocr.interface import OCRStatus
 from ocr_fusion.pipeline import OCRPipeline, build_pipeline
 from ocr_fusion.pipeline.events import EventLog, LogLevel, StageStatus
-from ocr_fusion.pipeline.pipeline import STAGE_COMPARISON, STAGE_FUSION, STAGE_UPLOAD
+from ocr_fusion.pipeline.pipeline import (
+    STAGE_COMPARISON,
+    STAGE_FUSION,
+    STAGE_ROUTING,
+    STAGE_UPLOAD,
+    STAGE_VERIFICATION,
+)
 from tests.conftest import FakeProvider
 
 
+@pytest.fixture
+def all_engines(settings):
+    """Settings that make every enabled engine read every page."""
+    settings.pipeline.engine_mode = EngineMode.ALL_ENGINES
+    return settings
+
+
 class TestHappyPath:
+    @pytest.fixture(autouse=True)
+    def _all_engines(self, settings):
+        settings.pipeline.engine_mode = EngineMode.ALL_ENGINES
+
     def test_runs_every_engine_in_order(self, settings, single_page_document, qwen_like, unlimited_like):
         result = OCRPipeline(settings, [qwen_like, unlimited_like]).execute(single_page_document)
         assert [r.provider_id for r in result.engine_results] == ["qwen_vl", "unlimited_ocr"]
@@ -49,6 +76,10 @@ class TestHappyPath:
 
 
 class TestFailureIsolation:
+    @pytest.fixture(autouse=True)
+    def _all_engines(self, settings):
+        settings.pipeline.engine_mode = EngineMode.ALL_ENGINES
+
     def test_a_failed_engine_does_not_stop_the_run(self, settings, single_page_document, qwen_like):
         broken = FakeProvider("unlimited_ocr", "Unlimited-OCR", "", fail=True)
         result = OCRPipeline(settings, [qwen_like, broken]).execute(single_page_document)
@@ -118,6 +149,10 @@ class TestFailureIsolation:
 
 
 class TestStageToggles:
+    @pytest.fixture(autouse=True)
+    def _all_engines(self, settings):
+        settings.pipeline.engine_mode = EngineMode.ALL_ENGINES
+
     def test_comparison_can_be_switched_off(self, settings, single_page_document, qwen_like, unlimited_like):
         settings.pipeline.run_comparison = False
         result = OCRPipeline(settings, [qwen_like, unlimited_like]).execute(single_page_document)
@@ -139,6 +174,10 @@ class TestStageToggles:
 
 
 class TestEventLog:
+    @pytest.fixture(autouse=True)
+    def _all_engines(self, settings):
+        settings.pipeline.engine_mode = EngineMode.ALL_ENGINES
+
     def test_records_the_run(self, settings, single_page_document, qwen_like, unlimited_like):
         pipeline = OCRPipeline(settings, [qwen_like, unlimited_like])
         pipeline.execute(single_page_document)
@@ -202,6 +241,10 @@ class TestEventLog:
 
 
 class TestComposition:
+    @pytest.fixture(autouse=True)
+    def _all_engines(self, settings):
+        settings.pipeline.engine_mode = EngineMode.ALL_ENGINES
+
     def test_build_pipeline_uses_enabled_engines(self, settings):
         import ocr_fusion.ocr.providers  # noqa: F401
 
@@ -253,3 +296,100 @@ class TestHealthReport:
         assert report["a"]["available"] is True
         assert report["b"]["available"] is False
         assert report["b"]["remedy"] == "Start the engine"
+
+
+class TestCascade:
+    """The default mode: each engine handles only what the earlier ones could not.
+
+    This is where the run time went. Every assertion below is an assertion
+    about a model call that does not happen.
+    """
+
+    @pytest.fixture
+    def scanned_document(self):
+        """Three pages of a scan: no text layer, and no two alike.
+
+        The pages must differ byte for byte or routing will - correctly - call
+        them duplicates and read only the first.
+        """
+        from ocr_fusion.documents.models import Document, DocumentKind, DocumentPage
+
+        return Document(
+            filename="scan.pdf",
+            kind=DocumentKind.PDF,
+            pages=[
+                DocumentPage(number=n, image_bytes=f"page-{n}".encode(), width=1240, height=1755)
+                for n in (1, 2, 3)
+            ],
+        )
+
+    def test_a_clean_primary_result_costs_no_second_engine(
+        self, settings, single_page_document, qwen_like, unlimited_like
+    ):
+        result = OCRPipeline(settings, [qwen_like, unlimited_like]).execute(
+            single_page_document
+        )
+        assert qwen_like.process_calls == 1
+        assert unlimited_like.process_calls == 0
+        assert result.succeeded
+
+    def test_the_skipped_engine_says_why(
+        self, settings, single_page_document, qwen_like, unlimited_like
+    ):
+        result = OCRPipeline(settings, [qwen_like, unlimited_like]).execute(
+            single_page_document
+        )
+        stage = next(s for s in result.stages if s.key == "unlimited_ocr")
+        assert stage.status is StageStatus.SKIPPED
+        assert "looks complete" in stage.detail
+
+    def test_a_flagged_page_does_reach_the_second_engine(
+        self, settings, scanned_document, unlimited_like
+    ):
+        # An engine that returns nothing for page 2 is the clearest possible
+        # signal that page 2 needs another look.
+        primary = FakeProvider("qwen_vl", "Qwen2.5-VL", "Invoice INV-1024", failing_pages=(2,))
+        OCRPipeline(settings, [primary, unlimited_like]).execute(scanned_document)
+        assert unlimited_like.process_calls == 1
+        # Only the flagged page, not the whole document.
+        assert unlimited_like.progress_calls == [(1, 1)]
+
+    def test_verification_reports_what_it_flagged(
+        self, settings, scanned_document, unlimited_like
+    ):
+        primary = FakeProvider("qwen_vl", "Qwen2.5-VL", "Invoice INV-1024", failing_pages=(2,))
+        result = OCRPipeline(settings, [primary, unlimited_like]).execute(scanned_document)
+        stage = next(s for s in result.stages if s.key == STAGE_VERIFICATION)
+        assert stage.status is StageStatus.COMPLETED
+        assert [c.page_number for c in result.confidence if c.needs_second_opinion] == [2]
+
+    def test_fallback_can_be_switched_off(
+        self, settings, scanned_document, unlimited_like
+    ):
+        settings.pipeline.fallback_enabled = False
+        primary = FakeProvider("qwen_vl", "Qwen2.5-VL", "Invoice INV-1024", failing_pages=(2,))
+        OCRPipeline(settings, [primary, unlimited_like]).execute(scanned_document)
+        assert unlimited_like.process_calls == 0
+
+    def test_a_document_the_primary_engine_failed_throughout_is_capped(
+        self, settings, scanned_document, unlimited_like
+    ):
+        # Paying twice for every page would hide a configuration problem.
+        primary = FakeProvider("qwen_vl", "Qwen2.5-VL", "", failing_pages=(1, 2, 3))
+        result = OCRPipeline(settings, [primary, unlimited_like]).execute(scanned_document)
+        assert unlimited_like.progress_calls == [(1, 1)]
+        assert any("more than the fallback is allowed" in e.message for e in result.log.events)
+
+    def test_routing_stage_is_recorded(self, settings, single_page_document, qwen_like):
+        result = OCRPipeline(settings, [qwen_like]).execute(single_page_document)
+        stage = next(s for s in result.stages if s.key == STAGE_ROUTING)
+        assert stage.status is StageStatus.COMPLETED
+        assert result.routing is not None
+
+    def test_routing_can_be_switched_off_entirely(
+        self, settings, single_page_document, qwen_like, unlimited_like
+    ):
+        settings.routing.enabled = False
+        OCRPipeline(settings, [qwen_like, unlimited_like]).execute(single_page_document)
+        assert qwen_like.process_calls == 1
+        assert unlimited_like.process_calls == 1

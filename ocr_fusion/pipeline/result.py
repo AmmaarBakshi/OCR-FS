@@ -16,8 +16,10 @@ from typing import Any
 from ocr_fusion.documents.models import Document
 from ocr_fusion.ocr.interface import OCRResult, OCRStatus
 from ocr_fusion.pipeline.comparison import ComparisonResult
+from ocr_fusion.pipeline.confidence import PageConfidence
 from ocr_fusion.pipeline.events import EventLog, Stage
 from ocr_fusion.pipeline.fusion import FusionResult
+from ocr_fusion.pipeline.routing import RoutingPlan
 
 #: Version of the export schema. Bump on any breaking shape change.
 SCHEMA_VERSION = "1.0"
@@ -31,6 +33,12 @@ class PipelineResult:
     engine_results: list[OCRResult] = field(default_factory=list)
     comparison: ComparisonResult | None = None
     fusion: FusionResult | None = None
+    routing: RoutingPlan | None = None
+    """What each page was judged to need, and why. ``None`` when routing is off."""
+
+    confidence: list[PageConfidence] = field(default_factory=list)
+    """Per-page confidence in the primary engine's output, for the review queue."""
+
     stages: list[Stage] = field(default_factory=list)
     log: EventLog | None = None
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

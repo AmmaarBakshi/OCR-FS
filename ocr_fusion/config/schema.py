@@ -73,6 +73,26 @@ class FusionStrategy(str, Enum):
     """Ask a language model to reconcile the two transcriptions."""
 
 
+class EngineMode(str, Enum):
+    """How the enabled engines divide the work between them."""
+
+    CASCADE = "cascade"
+    """Each engine handles only what the engines before it could not.
+
+    Text-layer extraction answers most pages for nothing; the first OCR engine
+    reads what is left; a second engine is spent only on pages the confidence
+    check flagged. This is the default because running every model over every
+    page is the most expensive policy available and, on the reference corpus,
+    almost entirely redundant."""
+
+    ALL_ENGINES = "all_engines"
+    """Every enabled engine reads every page.
+
+    The original behaviour, kept because it is what the side-by-side
+    comparison view is for: seeing where two engines disagree requires two
+    engines to have read the same page. It costs one full pass per engine."""
+
+
 class UnlimitedBackend(str, Enum):
     """Execution strategies for the Unlimited-OCR engine.
 
@@ -256,6 +276,35 @@ class RoutingSettings(BaseModel):
     text_layer_min_quality: float = Field(default=0.7, ge=0.0, le=1.0)
 
 
+class ConfidenceSettings(BaseModel):
+    """Thresholds for deciding a page deserves a second engine.
+
+    Vision models report no confidence of their own, so these describe
+    properties of the transcription that can be checked without one. Each
+    threshold is loose enough that a clean page never trips it - the cost of a
+    false alarm is eight minutes of CPU.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_repeated_lines: int = Field(default=6, ge=2)
+    """Consecutive identical lines before the engine is judged to be looping.
+
+    Set above what a real document produces: a column of identical amounts or
+    a run of leader dots is ordinary, an engine emitting one line forty times
+    is not."""
+
+    dense_ink_ratio: float = Field(default=0.06, ge=0.0, le=1.0)
+    """Ink share above which a page counts as densely printed."""
+
+    min_words_for_dense_page: int = Field(default=30, ge=0)
+    """A densely printed page transcribing to fewer words than this was not
+    read properly, whatever the engine claims."""
+
+    min_language_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
+    """Share of tokens that must look like words or figures."""
+
+
 class TesseractSettings(BaseModel):
     """An optional third engine, included to prove the provider abstraction."""
 
@@ -332,6 +381,20 @@ class PipelineSettings(BaseModel):
     run_fusion: bool = True
     collect_confidence: bool = True
     collect_logs: bool = True
+
+    engine_mode: EngineMode = EngineMode.CASCADE
+    """Whether engines divide the pages between them or all read every page."""
+
+    fallback_enabled: bool = True
+    """In cascade mode, allow a second engine on pages the confidence check
+    flagged. Turning this off makes a run single-pass and its cost flat."""
+
+    max_fallback_page_share: float = Field(default=0.5, ge=0.0, le=1.0)
+    """Ceiling on the share of pages that may go to the fallback engine.
+
+    A document the primary engine handled badly throughout is a configuration
+    problem - the wrong model, or a DPI too low to read - and quietly paying
+    twice for every page hides it. Past this share the run says so instead."""
 
     fusion_strategy: FusionStrategy = FusionStrategy.LINE_VOTE
     fusion_model: str = "qwen2.5:1.5b"
@@ -427,6 +490,7 @@ class AppSettings(BaseModel):
     tesseract: TesseractSettings = Field(default_factory=TesseractSettings)
     prompts: PromptSettings = Field(default_factory=PromptSettings)
     routing: RoutingSettings = Field(default_factory=RoutingSettings)
+    confidence: ConfidenceSettings = Field(default_factory=ConfidenceSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
     chat: ChatSettings = Field(default_factory=ChatSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
@@ -446,7 +510,9 @@ class AppSettings(BaseModel):
 
 __all__ = [
     "AppSettings",
+    "ConfidenceSettings",
     "DocumentSettings",
+    "EngineMode",
     "FusionStrategy",
     "GeneralSettings",
     "OllamaSettings",
