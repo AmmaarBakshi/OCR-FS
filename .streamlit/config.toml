@@ -2,10 +2,11 @@
 # values only set what Streamlit paints before our CSS loads, which prevents a
 # flash of default blue on first render.
 [theme]
-primaryColor = "#4338ca"
-backgroundColor = "#f6f7fb"
-secondaryBackgroundColor = "#ffffff"
-textColor = "#12141c"
+base = "dark"
+primaryColor = "#8b7cf6"
+backgroundColor = "#101219"
+secondaryBackgroundColor = "#191b24"
+textColor = "#eceff7"
 font = "sans serif"
 
 [server]

@@ -163,8 +163,15 @@ class OCRPipeline:
         for provider in self.providers:
             key = provider.provider_id
             self.log.start_stage(key, f"{provider.provider_name} started")
+
+            def report_progress(current: int, total: int) -> None:
+                stage = self.log.stage(key)
+                stage.detail = f"Processing page {current} of {total}..."
+                # Emit an info event so the UI updates and the user doesn't think it's stuck
+                self.log.info(f"{provider.provider_name} processing page {current} of {total}...", stage=key)
+
             try:
-                result = provider.process(document)
+                result = provider.process(document, on_progress=report_progress)
             except Exception as exc:  # noqa: BLE001 - a provider bug must not
                 # take down a run the user has already waited minutes for.
                 logger.exception("Provider %s raised", key)

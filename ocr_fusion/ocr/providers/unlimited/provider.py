@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from typing import Any
+from collections.abc import Callable
 
 from ocr_fusion.config.schema import (
     AppSettings,
@@ -101,7 +102,7 @@ class UnlimitedOCRProvider(OCRProvider):
 
     # -- inference ---------------------------------------------------------
 
-    def process(self, document: Document) -> OCRResult:
+    def process(self, document: Document, on_progress: Callable[[int, int], None] | None = None) -> OCRResult:
         started = self._timer()
         result = OCRResult(
             provider_id=self.provider_id,
@@ -124,7 +125,10 @@ class UnlimitedOCRProvider(OCRProvider):
             )
 
         prompt = self.settings.prompts.unlimited_ocr_task
-        for page in document.pages:
+        total = len(document.pages)
+        for i, page in enumerate(document.pages, 1):
+            if on_progress:
+                on_progress(i, total)
             result.pages.append(self._process_page(page, prompt))
 
         result.duration_seconds = self._elapsed(started)

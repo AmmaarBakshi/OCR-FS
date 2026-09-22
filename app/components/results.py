@@ -160,7 +160,19 @@ def _render_final(result: PipelineResult, settings: AppSettings) -> None:
             notice(escape(warning), "warn")
 
     _render_text(text)
-    _render_counts(text, settings)
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        _render_counts(text, settings)
+    with col2:
+        st.download_button(
+            "Download Output",
+            data=text,
+            file_name="output.txt",
+            mime="text/plain",
+            use_container_width=True,
+            key="ofs_final_download"
+        )
 
 
 def _render_engine(

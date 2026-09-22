@@ -41,22 +41,23 @@ _CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --ink: #12141c;
-  --ink-soft: #4a4f61;
-  --ink-faint: #7c8296;
-  --surface: #ffffff;
-  --canvas: #f6f7fb;
-  --line: #e4e7f0;
-  --brand: #4338ca;
-  --brand-soft: #eef2ff;
+  --ink: #eceff7;
+  --ink-soft: #b3bacd;
+  --ink-faint: #8c94ab;
+  --surface: #191b24;
+  --canvas: #101219;
+  --line: #2b2f3d;
+  --brand: #8b7cf6;
+  --brand-soft: #23213c;
   --success: #0f9d58;
-  --success-soft: #e7f6ee;
+  --success-soft: #14301f;
   --warning: #b45309;
-  --warning-soft: #fef3c7;
+  --warning-soft: #33270d;
   --danger: #c02626;
-  --danger-soft: #fdecec;
+  --danger-soft: #351919;
   --radius: 14px;
-  --shadow: 0 1px 2px rgba(18,20,28,.04), 0 8px 24px rgba(18,20,28,.06);
+  --shadow: 0 1px 2px rgba(0,0,0,.1), 0 8px 24px rgba(0,0,0,.2);
+  --muted: #737b91;
 }
 
 /* Hide Streamlit chrome: the hamburger menu, footer and deploy button read as
@@ -163,9 +164,9 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 /* ---------- badges ---------- */
 .ofs-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px;
   font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
-.ofs-badge.ok { background: var(--success-soft); color: #0b7a45; }
+.ofs-badge.ok { background: var(--success-soft); color: #7fd6a5; }
 .ofs-badge.warn { background: var(--warning-soft); color: var(--warning); }
-.ofs-badge.err { background: var(--danger-soft); color: var(--danger); }
+.ofs-badge.err { background: var(--danger-soft); color: #f5a3a3; }
 .ofs-badge.info { background: var(--brand-soft); color: var(--brand); }
 .ofs-badge.neutral { background: #eef0f5; color: var(--ink-soft); }
 
@@ -177,12 +178,12 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 .ofs-diff-head > div { padding: 9px 13px; font-size: 11px; font-weight: 650;
   text-transform: uppercase; letter-spacing: .07em; color: var(--ink-faint); }
 .ofs-diff-head > div:first-child { border-right: 1px solid var(--line); }
-.ofs-diff-row { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #f0f2f7; }
+.ofs-diff-row { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #23262f; }
 .ofs-diff-row:last-child { border-bottom: none; }
 .ofs-diff-cell { padding: 7px 13px; white-space: pre-wrap; overflow-wrap: anywhere;
   line-height: 1.5; }
-.ofs-diff-cell:first-child { border-right: 1px solid #f0f2f7; }
-.ofs-diff-row.changed { background: #fffbeb; }
+.ofs-diff-cell:first-child { border-right: 1px solid #23262f; }
+.ofs-diff-row.changed { background: #2a2410; }
 .ofs-diff-row.only-a .ofs-diff-cell:first-child { background: var(--danger-soft); }
 .ofs-diff-row.only-b .ofs-diff-cell:last-child { background: var(--success-soft); }
 .ofs-diff-row.numeric { background: var(--danger-soft); }
@@ -281,9 +282,9 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 /* ---------- notices ---------- */
 .ofs-notice { border-radius: 11px; padding: 12px 15px; font-size: 13px;
   line-height: 1.6; border: 1px solid; margin-bottom: 12px; }
-.ofs-notice.err { background: var(--danger-soft); border-color: #f3c2c2; color: #8c1c1c; }
-.ofs-notice.warn { background: var(--warning-soft); border-color: #f5d98a; color: #8a4708; }
-.ofs-notice.info { background: var(--brand-soft); border-color: #ccd3fb; color: #33299e; }
+.ofs-notice.err { background: var(--danger-soft); border-color: #f3c2c2; color: #f6b8b8; }
+.ofs-notice.warn { background: var(--warning-soft); border-color: #f5d98a; color: #f2cf8a; }
+.ofs-notice.info { background: var(--brand-soft); border-color: #ccd3fb; color: #c3bbfb; }
 .ofs-notice-title { font-weight: 650; margin-bottom: 3px; }
 .ofs-notice code { background: rgba(0,0,0,.07); padding: 1px 6px; border-radius: 5px;
   font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
@@ -320,22 +321,7 @@ h1, h2, h3, h4 { color: var(--ink); letter-spacing: -0.018em; font-weight: 650; 
 [data-testid="stExpander"] summary { font-size: 13.5px; font-weight: 600; }
 hr { margin: 14px 0; border-color: var(--line); }
 
-/* Dark mode: the viewer's OS preference must not produce unreadable cards. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #eceff7; --ink-soft: #b3bacd; --ink-faint: #8c94ab;
-    --surface: #191b24; --canvas: #101219; --line: #2b2f3d;
-    --brand: #8b7cf6; --brand-soft: #23213c;
-    --success-soft: #14301f; --warning-soft: #33270d; --danger-soft: #351919;
-    --muted: #737b91;
-  }
-  .ofs-diff-row.changed { background: #2a2410; }
-  .ofs-diff-row:not(:last-child) { border-bottom-color: #23262f; }
-  .ofs-diff-cell:first-child { border-right-color: #23262f; }
-  .ofs-notice.err { color: #f6b8b8; } .ofs-notice.warn { color: #f2cf8a; }
-  .ofs-notice.info { color: #c3bbfb; }
-  .ofs-badge.ok { color: #7fd6a5; } .ofs-badge.err { color: #f5a3a3; }
-}
+/* Dark mode is now the default. */
 </style>
 """
 

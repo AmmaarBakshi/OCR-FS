@@ -15,6 +15,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -87,7 +88,7 @@ class TesseractProvider(OCRProvider):
             "reports_tokens": False,
         }
 
-    def process(self, document: Document) -> OCRResult:
+    def process(self, document: Document, on_progress: Callable[[int, int], None] | None = None) -> OCRResult:
         started = self._timer()
         result = OCRResult(
             provider_id=self.provider_id,
@@ -109,7 +110,10 @@ class TesseractProvider(OCRProvider):
                 metadata=self.get_metadata(),
             )
 
-        for page in document.pages:
+        total = len(document.pages)
+        for i, page in enumerate(document.pages, 1):
+            if on_progress:
+                on_progress(i, total)
             result.pages.append(self._process_page(page))
 
         result.duration_seconds = self._elapsed(started)

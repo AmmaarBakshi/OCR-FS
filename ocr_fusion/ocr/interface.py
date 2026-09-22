@@ -21,6 +21,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+from collections.abc import Callable
 
 from ocr_fusion.config.schema import ProcessingLocation
 from ocr_fusion.documents.models import Document
@@ -255,7 +256,7 @@ class OCRProvider(ABC):
     processing_location: ProcessingLocation = ProcessingLocation.UNKNOWN
 
     @abstractmethod
-    def process(self, document: Document) -> OCRResult:
+    def process(self, document: Document, on_progress: Callable[[int, int], None] | None = None) -> OCRResult:
         """Transcribe every page of ``document``.
 
         Implementations must not raise for expected failures (unreachable

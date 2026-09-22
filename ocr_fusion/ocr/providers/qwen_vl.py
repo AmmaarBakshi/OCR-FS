@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from typing import Any
+from collections.abc import Callable
 
 from ocr_fusion.config.schema import AppSettings, ProcessingLocation
 from ocr_fusion.documents.models import Document, DocumentPage
@@ -112,7 +113,7 @@ class QwenVLProvider(OCRProvider):
 
     # -- inference ---------------------------------------------------------
 
-    def process(self, document: Document) -> OCRResult:
+    def process(self, document: Document, on_progress: Callable[[int, int], None] | None = None) -> OCRResult:
         """Transcribe every page, keeping going when individual pages fail."""
         started = self._timer()
         result = OCRResult(
@@ -137,7 +138,10 @@ class QwenVLProvider(OCRProvider):
                 metadata=self.get_metadata(),
             )
 
-        for page in document.pages:
+        total = len(document.pages)
+        for i, page in enumerate(document.pages, 1):
+            if on_progress:
+                on_progress(i, total)
             result.pages.append(self._process_page(page))
 
         result.duration_seconds = self._elapsed(started)

@@ -7,8 +7,7 @@ models, shows you where they disagree, and produces a single reconciled result.
 Document  ->  Qwen2.5-VL  ->  Unlimited-OCR  ->  Comparison  ->  Fusion  ->  Final result
 ```
 
-Both raw transcriptions are always kept. The comparison view puts them side by
-side and calls out the disagreements — especially the numeric ones, because a
+ side and calls out the disagreements — especially the numeric ones, because a
 mistranscribed figure on an invoice is the error that actually costs something.
 
 Underneath the app is `ocr_fusion`, a UI-agnostic framework you can drop into
