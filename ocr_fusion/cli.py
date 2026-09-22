@@ -61,6 +61,7 @@ def _apply_overrides(settings: AppSettings, args: argparse.Namespace) -> AppSett
         settings.pipeline.max_pages = args.max_pages
     if args.engine:
         # Only the named engines run.
+        settings.text_layer.enabled = "text_layer" in args.engine
         settings.qwen.enabled = "qwen_vl" in args.engine
         settings.unlimited_ocr.enabled = "unlimited_ocr" in args.engine
         settings.tesseract.enabled = "tesseract" in args.engine
@@ -144,6 +145,125 @@ def command_run(args: argparse.Namespace) -> int:
         sys.stdout.buffer.flush()
 
     return 0 if result.succeeded else 1
+
+
+def command_batch(args: argparse.Namespace) -> int:
+    """Process a folder of documents, writing each result as it finishes.
+
+    Re-running the same command resumes: finished documents are skipped and
+    new ones are picked up, so a batch stopped after nine hours costs nothing
+    to continue.
+    """
+    from ocr_fusion.batch import BatchRunner, BatchState, JobState, collect_documents, elapsed_text
+
+    settings = _apply_overrides(load_settings(), args)
+    if args.cache:
+        settings.cache.enabled = True
+
+    target = Path(args.target)
+    documents = collect_documents(target)
+    if args.limit:
+        documents = documents[: args.limit]
+    if not documents:
+        print(f"error: no supported documents found at {target}", file=sys.stderr)
+        return 2
+
+    output_directory = Path(args.output or "runtime/batch")
+    checkpoint = Path(args.checkpoint or output_directory / "batch.json")
+    state = BatchState.for_documents(documents, checkpoint, label=args.label)
+
+    if args.reset:
+        for job in state.jobs:
+            job.state = JobState.QUEUED
+            job.attempts = 0
+            job.error = None
+
+    remaining = len(state.pending)
+    done = len(state.jobs) - remaining
+    print(
+        f"{len(state.jobs)} document(s) at {target}"
+        + (f" - {done} already finished, {remaining} to do" if done else ""),
+        file=sys.stderr,
+    )
+    if args.status:
+        _print_batch_status(state)
+        return 0
+    if not remaining:
+        print("nothing to do. Use --reset to run them all again.", file=sys.stderr)
+        _print_batch_status(state)
+        return 0
+
+    def report(kind: str, payload: dict) -> None:
+        if kind == "document_started":
+            print(f"  {Path(payload['source']).name}", file=sys.stderr, end="", flush=True)
+        elif kind == "document_finished":
+            progress = payload["progress"]
+            eta = elapsed_text(progress.get("estimated_remaining_seconds"))
+            flagged = payload["flagged"]
+            note = f", {flagged} page(s) flagged" if flagged else ""
+            print(
+                f"  -> {payload['pages']}p in {elapsed_text(payload['seconds'])}{note}"
+                f"  [{progress['documents_completed']}/{progress['documents_total']}, "
+                f"ETA {eta}]",
+                file=sys.stderr,
+            )
+        elif kind == "document_failed":
+            print(f"  -> failed: {payload['error']}", file=sys.stderr)
+        elif kind == "paused_for_memory":
+            available = payload.get("available_mb")
+            print(
+                f"\nstopped: only {available:.0f} MB free, and a model needs about "
+                f"{payload['needed_mb']:.0f} MB. Nothing was lost - run the same "
+                "command again when there is room.",
+                file=sys.stderr,
+            )
+
+    runner = BatchRunner(
+        settings,
+        output_directory,
+        output_format=OutputFormat(args.format),
+        max_attempts=args.retries + 1,
+        on_event=report,
+    )
+    runner.run(state)
+
+    print(file=sys.stderr)
+    _print_batch_status(state)
+    print(f"\nresults in {output_directory}", file=sys.stderr)
+    print(f"checkpoint {checkpoint}", file=sys.stderr)
+
+    counts = state.counts()
+    return 1 if counts["failed"] else 0
+
+
+def _print_batch_status(state: object) -> None:
+    """Print the state of every document, and the throughput actually seen."""
+    from ocr_fusion.batch import elapsed_text
+
+    progress = state.progress()  # type: ignore[attr-defined]
+    counts = progress["counts"]
+
+    print()
+    for name in ("completed", "review_required", "failed", "queued", "cancelled"):
+        if counts.get(name):
+            print(f"  {name.replace('_', ' '):<18} {counts[name]}")
+    print(f"  {'pages done':<18} {progress['pages_completed']}")
+    rate = progress["pages_per_minute"]
+    print(f"  {'pages / minute':<18} {'n/a' if rate is None else rate}")
+    eta = progress["estimated_remaining_seconds"]
+    if eta:
+        print(f"  {'estimated left':<18} {elapsed_text(eta)}")
+
+    flagged = [j for j in state.jobs if j.state.value == "review_required"]  # type: ignore[attr-defined]
+    failed = [j for j in state.jobs if j.state.value == "failed"]  # type: ignore[attr-defined]
+    if flagged:
+        print("\n  needs a look (transcribed, but some pages were flagged)")
+        for job in flagged[:10]:
+            print(f"    {Path(job.source).name[:50]:<52} {job.pages_flagged} page(s)")
+    if failed:
+        print("\n  failed")
+        for job in failed[:10]:
+            print(f"    {Path(job.source).name[:50]:<52} {job.error}")
 
 
 def _collect_documents(target: str, pattern: str = "*.pdf") -> list[Path]:
@@ -313,7 +433,7 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument(
         "--engine",
         action="append",
-        choices=["qwen_vl", "unlimited_ocr", "tesseract"],
+        choices=["text_layer", "qwen_vl", "unlimited_ocr", "tesseract"],
         help="Run only this engine. Repeat for several.",
     )
 
@@ -337,6 +457,42 @@ def build_parser() -> argparse.ArgumentParser:
 
     providers = sub.add_parser("providers", parents=[common], help="List registered engines.")
     providers.set_defaults(func=command_providers)
+
+    batch = sub.add_parser(
+        "batch",
+        parents=[common],
+        help="Process a folder of documents, resuming where the last run stopped.",
+    )
+    batch.add_argument("target", help="A folder of documents, or one document.")
+    batch.add_argument("-o", "--output", help="Where results go (default: runtime/batch).")
+    batch.add_argument(
+        "-f",
+        "--format",
+        choices=[f.value for f in OutputFormat],
+        default="json",
+        help="Result format (default: json).",
+    )
+    batch.add_argument("--checkpoint", help="Checkpoint file (default: <output>/batch.json).")
+    batch.add_argument("--limit", type=int, help="Process at most N documents.")
+    batch.add_argument(
+        "--retries",
+        type=int,
+        default=1,
+        help="Extra attempts for a document that fails (default: 1).",
+    )
+    batch.add_argument(
+        "--cache",
+        action="store_true",
+        help="Remember pages between runs. Writes transcribed text to disk.",
+    )
+    batch.add_argument(
+        "--reset", action="store_true", help="Forget past progress and run everything again."
+    )
+    batch.add_argument(
+        "--status", action="store_true", help="Report progress and stop, without processing."
+    )
+    batch.add_argument("--label", default="batch", help="Name for this batch.")
+    batch.set_defaults(func=command_batch)
 
     bench_common = argparse.ArgumentParser(add_help=False)
     bench_common.add_argument(
