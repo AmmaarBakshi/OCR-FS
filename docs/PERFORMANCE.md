@@ -143,14 +143,32 @@ over-counts. Those two rows measure the measurement, not the models, and
 should not be used to choose between them.
 
 On the one page where the ground truth is trustworthy, Qwen is clearly more
-accurate — and **figure recall is the number that matters on financial
-documents**, where DeepSeek recovered half the figures to Qwen's 89%.
+accurate — and the difference is not a rounding error in a noisy metric. With
+only 18 figures on the page the 50% could have been chance, so here are the
+figures each model failed to produce:
+
+| Model | Figures missed |
+|---|---|
+| deepseek-ocr:3b | `0010` `7480` `7076` `31,` `2021` `2` `10` |
+| qwen2.5vl:3b | `2` `10` |
+
+`0010 7480 7076` is the **account number**. DeepSeek did not misread it — it
+omitted the header line carrying it altogether:
+
+```
+truth             FARSHID A MAZLOOM ! Account # 0010 7480 7076 ! July 31, 2021 to August 31, 2021
+qwen2.5vl:3b      Account # 0010 7480 7076 | July 31, 2021 to August 31, 2021
+deepseek-ocr:3b   (no account line anywhere in the output)
+```
+
+Qwen's two misses are the digits of "Page 2 of 10". One model lost the
+pagination; the other lost the account the statement is about.
 
 **Recommendation: leave Qwen primary, and keep DeepSeek as the configured
 fallback.** If nine genuinely scanned pages must fit inside 25 minutes,
-switching the primary to DeepSeek would do it (~15–24 min) — but on a bank
-statement that trade costs figures, and figures are the error that costs
-money. Make it a deliberate choice per workload, not a default.
+switching the primary to DeepSeek would do it (~15–24 min). But on this
+evidence the trade costs account numbers, not merely speed, so it belongs on
+document types where identifiers do not matter — never as a silent default.
 
 ---
 
