@@ -32,6 +32,25 @@ def all_engines(settings):
     return settings
 
 
+@pytest.fixture
+def scanned_document():
+    """Three pages of a scan: no text layer, and no two alike.
+
+    The pages must differ byte for byte or routing will - correctly - call them
+    duplicates and read only the first.
+    """
+    from ocr_fusion.documents.models import Document, DocumentKind, DocumentPage
+
+    return Document(
+        filename="scan.pdf",
+        kind=DocumentKind.PDF,
+        pages=[
+            DocumentPage(number=n, image_bytes=f"page-{n}".encode(), width=1240, height=1755)
+            for n in (1, 2, 3)
+        ],
+    )
+
+
 class TestHappyPath:
     @pytest.fixture(autouse=True)
     def _all_engines(self, settings):
@@ -304,24 +323,6 @@ class TestCascade:
     This is where the run time went. Every assertion below is an assertion
     about a model call that does not happen.
     """
-
-    @pytest.fixture
-    def scanned_document(self):
-        """Three pages of a scan: no text layer, and no two alike.
-
-        The pages must differ byte for byte or routing will - correctly - call
-        them duplicates and read only the first.
-        """
-        from ocr_fusion.documents.models import Document, DocumentKind, DocumentPage
-
-        return Document(
-            filename="scan.pdf",
-            kind=DocumentKind.PDF,
-            pages=[
-                DocumentPage(number=n, image_bytes=f"page-{n}".encode(), width=1240, height=1755)
-                for n in (1, 2, 3)
-            ],
-        )
 
     def test_a_clean_primary_result_costs_no_second_engine(
         self, settings, single_page_document, qwen_like, unlimited_like
