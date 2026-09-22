@@ -504,6 +504,15 @@ class DocumentSettings(BaseModel):
     detect_text_layer: bool = True
     """Report whether a PDF already contains selectable text."""
 
+    release_pages_after_reading: bool = True
+    """Drop a page's pixels once an engine has finished with it.
+
+    A rendered page is around 200 KB, so a 500-page scan holds ~100 MB of
+    images nothing will look at again. A PDF page can redraw itself on demand,
+    so nothing is lost - the review queue still shows any page it needs.
+    Turning this off keeps every page in memory, which is only worth doing
+    when the source is an image the loader cannot re-render."""
+
     max_file_size_mb: float = Field(default=50.0, gt=0)
 
 

@@ -227,12 +227,23 @@ class OCRPipeline:
         name = provider.provider_name
         total_pages = document.page_count
 
+        pages = document.pages
+
         def report_progress(current: int, total: int) -> None:
             stage = self.log.stage(key)
             stage.detail = f"Processing page {current} of {total}..."
             # An info event as well as the stage detail: a nine-page run sits
             # inside this call for minutes and silence reads as a hang.
             self.log.info(f"{name} processing page {current} of {total}...", stage=key)
+
+            # The engine has finished with the previous page, and a rendered
+            # page is ~200 KB. Holding all of them costs a 500-page scan about
+            # 100 MB for pixels nothing will look at again - and on a machine
+            # with under a gigabyte free, that is the difference between
+            # running and swapping. The page can still redraw itself if the
+            # review queue asks for it later.
+            if self.settings.documents.release_pages_after_reading and current > 1:
+                pages[current - 2].release_image()
 
         if total_pages == 0:
             return OCRResult.skipped(key, name, "no pages were routed to this engine")

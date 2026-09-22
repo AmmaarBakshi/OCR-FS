@@ -244,3 +244,58 @@ class TestSettingsCompatibility:
         assert settings.routing.enabled
         assert settings.routing.use_text_layer
         assert settings.pipeline.fallback_enabled
+
+
+class TestMemoryRelease:
+    """A rendered page is ~200KB; a long scan must not hold all of them."""
+
+    def test_a_finished_page_gives_its_pixels_back(self):
+        renders = {"count": 0}
+
+        def render() -> bytes:
+            renders["count"] += 1
+            return _image(marks=20)
+
+        page = DocumentPage(number=1, width=100, height=100, render=render)
+        assert not page.is_rendered
+        page.image_bytes
+        assert page.is_rendered and renders["count"] == 1
+
+        page.release_image()
+        assert not page.is_rendered
+        # Nothing is lost: the page can draw itself again if asked.
+        page.image_bytes
+        assert renders["count"] == 2
+
+    def test_a_page_that_cannot_redraw_keeps_its_pixels(self):
+        # An uploaded image has no renderer, so releasing would lose it.
+        page = DocumentPage(number=1, image_bytes=_image(), width=100, height=100)
+        page.release_image()
+        assert page.is_rendered
+
+    def test_a_page_needs_either_pixels_or_a_way_to_make_them(self):
+        with pytest.raises(ValueError):
+            DocumentPage(number=1, width=100, height=100)
+
+    def test_the_pipeline_releases_pages_as_it_goes(self, tmp_path):
+        from ocr_fusion.config.schema import AppSettings
+        from ocr_fusion.pipeline import OCRPipeline
+        from tests.conftest import FakeProvider
+
+        settings = AppSettings()
+        pages = [
+            DocumentPage(
+                number=n,
+                width=100,
+                height=100,
+                render=lambda n=n: _image(marks=n),
+            )
+            for n in (1, 2, 3)
+        ]
+        engine = FakeProvider("qwen_vl", "Qwen2.5-VL", "Invoice INV-1024")
+        OCRPipeline(settings, [engine]).execute(_document(pages))
+
+        # The last page is still held - nothing has reported past it - but the
+        # earlier ones have been handed back.
+        assert not pages[0].is_rendered
+        assert not pages[1].is_rendered
