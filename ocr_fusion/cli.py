@@ -48,7 +48,15 @@ def _symbol(status: str) -> str:
 
 
 def _apply_overrides(settings: AppSettings, args: argparse.Namespace) -> AppSettings:
-    """Apply command-line overrides on top of the loaded settings."""
+    """Apply command-line overrides on top of the loaded settings.
+
+    The profile is applied first so an explicit flag - ``--dpi`` say - still
+    wins over the profile that would otherwise have set it.
+    """
+    if getattr(args, "profile", None):
+        from ocr_fusion.config.profiles import PerformanceProfile, apply_profile
+
+        apply_profile(settings, PerformanceProfile(args.profile))
     if args.model:
         settings.qwen.model = args.model
     if args.host:
@@ -100,6 +108,40 @@ def command_providers(args: argparse.Namespace) -> int:
         print(f"[{mark}] {spec.provider_id:<16} {spec.display_name}")
         if spec.description:
             print(f"       {spec.description}")
+    return 0
+
+
+def command_profiles(args: argparse.Namespace) -> int:
+    """Show each profile and the measurement behind it."""
+    from ocr_fusion.config.profiles import (
+        PROFILE_MEASUREMENTS,
+        PROFILE_SETTINGS,
+        PerformanceProfile,
+        current_profile,
+    )
+
+    active = current_profile(load_settings())
+    print("Measured on one scanned tax-form page, qwen2.5vl:3b, 4-core CPU,")
+    print("scored against the text layer that page was authored with.")
+    print()
+    print(f"  {'':2} {'profile':<10} {'DPI':>4} {'s/page':>7} {'word err':>9} {'recall':>7}")
+    for profile in PerformanceProfile:
+        measured = PROFILE_MEASUREMENTS[profile]
+        mark = "->" if profile is active else "  "
+        print(
+            f"  {mark} {profile.value:<10} "
+            f"{PROFILE_SETTINGS[profile]['pdf_render_dpi']:>4} "
+            f"{measured['seconds_per_scanned_page']:>7.0f} "
+            f"{measured['word_error_rate']:>9.3f} "
+            f"{measured['recall']:>7.1%}"
+        )
+    if active is None:
+        print("\n  Current settings do not match a profile.")
+    print(
+        "\n  Per scanned page. A page with a usable text layer costs "
+        "milliseconds under\n  every profile - which is why routing matters "
+        "far more than the profile."
+    )
     return 0
 
 
@@ -428,6 +470,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[b.value for b in UnlimitedBackend],
         help="Override the Unlimited-OCR backend.",
     )
+    common.add_argument(
+        "--profile",
+        choices=["fast", "balanced", "accurate"],
+        help="Speed/accuracy trade-off. See 'profiles' for the measured numbers.",
+    )
     common.add_argument("--dpi", type=int, help="PDF render DPI.")
     common.add_argument("--max-pages", type=int, help="Process at most N pages (0 = all).")
     common.add_argument(
@@ -457,6 +504,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     providers = sub.add_parser("providers", parents=[common], help="List registered engines.")
     providers.set_defaults(func=command_providers)
+
+    profiles = sub.add_parser(
+        "profiles", help="Show the speed/accuracy profiles and what they measured."
+    )
+    profiles.set_defaults(func=command_profiles)
 
     batch = sub.add_parser(
         "batch",

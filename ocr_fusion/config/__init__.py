@@ -5,10 +5,19 @@ Import settings from here rather than reaching into submodules::
     from ocr_fusion.config import AppSettings, load_settings, save_settings
 """
 
+from ocr_fusion.config.profiles import (
+    PerformanceProfile,
+    apply_profile,
+    current_profile,
+    describe_profile,
+)
 from ocr_fusion.config.prompts import DEFAULT_PROMPTS, render
 from ocr_fusion.config.schema import (
     AppSettings,
+    CacheSettings,
     ChatSettings,
+    ConfidenceSettings,
+    EngineMode,
     DeliveryMode,
     DocumentSettings,
     FusionStrategy,
@@ -21,7 +30,9 @@ from ocr_fusion.config.schema import (
     ProcessingLocation,
     PromptSettings,
     QwenSettings,
+    RoutingSettings,
     TesseractSettings,
+    TextLayerSettings,
     Theme,
     UnlimitedBackend,
     UnlimitedOCRSettings,
@@ -36,7 +47,16 @@ from ocr_fusion.config.store import (
 __all__ = [
     "DEFAULT_PROMPTS",
     "AppSettings",
+    "CacheSettings",
     "ChatSettings",
+    "ConfidenceSettings",
+    "EngineMode",
+    "PerformanceProfile",
+    "RoutingSettings",
+    "TextLayerSettings",
+    "apply_profile",
+    "current_profile",
+    "describe_profile",
     "DeliveryMode",
     "DocumentSettings",
     "FusionStrategy",

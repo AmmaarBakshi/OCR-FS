@@ -228,3 +228,69 @@ class TestRedaction:
 
     def test_absent_key_stays_empty(self):
         assert AppSettings().redacted()["unlimited_ocr"]["api_key"] == ""
+
+
+class TestPerformanceProfiles:
+    """Named points on a curve that was measured, not guessed."""
+
+    def test_the_shipped_defaults_are_the_balanced_profile(self):
+        from ocr_fusion.config.profiles import PerformanceProfile, current_profile
+
+        assert current_profile(AppSettings()) is PerformanceProfile.BALANCED
+
+    def test_each_profile_round_trips(self):
+        from ocr_fusion.config.profiles import (
+            PerformanceProfile,
+            apply_profile,
+            current_profile,
+        )
+
+        for profile in PerformanceProfile:
+            assert current_profile(apply_profile(AppSettings(), profile)) is profile
+
+    def test_profiles_are_ordered_by_cost(self):
+        from ocr_fusion.config.profiles import PROFILE_SETTINGS, PerformanceProfile
+
+        dpis = [PROFILE_SETTINGS[p]["pdf_render_dpi"] for p in PerformanceProfile]
+        assert dpis == sorted(dpis)
+
+    def test_every_profile_carries_its_measurement(self):
+        from ocr_fusion.config.profiles import (
+            PROFILE_MEASUREMENTS,
+            PerformanceProfile,
+            describe_profile,
+        )
+
+        for profile in PerformanceProfile:
+            measured = PROFILE_MEASUREMENTS[profile]
+            assert 0 < measured["recall"] <= 1
+            assert measured["seconds_per_scanned_page"] > 0
+            assert str(int(measured["recall"] * 1000)) or describe_profile(profile)
+
+    def test_faster_profiles_really_are_faster_and_less_accurate(self):
+        # If this ever stops holding, the profiles have stopped describing a
+        # trade-off and one of them is simply the wrong choice.
+        from ocr_fusion.config.profiles import PROFILE_MEASUREMENTS, PerformanceProfile
+
+        order = [PerformanceProfile.FAST, PerformanceProfile.BALANCED, PerformanceProfile.ACCURATE]
+        seconds = [PROFILE_MEASUREMENTS[p]["seconds_per_scanned_page"] for p in order]
+        errors = [PROFILE_MEASUREMENTS[p]["word_error_rate"] for p in order]
+        assert seconds == sorted(seconds)
+        assert errors == sorted(errors, reverse=True)
+
+    def test_a_profile_leaves_the_operators_own_settings_alone(self):
+        from ocr_fusion.config.profiles import PerformanceProfile, apply_profile
+
+        settings = AppSettings()
+        settings.ollama.host = "http://gpu-box:11434"
+        settings.privacy.persist_documents = True
+        apply_profile(settings, PerformanceProfile.FAST)
+        assert settings.ollama.host == "http://gpu-box:11434"
+        assert settings.privacy.persist_documents is True
+
+    def test_custom_settings_match_no_profile(self):
+        from ocr_fusion.config.profiles import current_profile
+
+        settings = AppSettings()
+        settings.documents.pdf_render_dpi = 137
+        assert current_profile(settings) is None
