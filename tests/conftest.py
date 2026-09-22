@@ -76,6 +76,10 @@ class FakeProvider(OCRProvider):
         self.failing_pages = failing_pages
         self.duration = duration
         self.process_calls = 0
+        #: Page numbers this engine was actually asked to read, across
+        #: every call. The observable that matters for routing and
+        #: caching: both exist to keep pages away from an engine.
+        self.pages_seen: list[int] = []
         self.progress_calls: list[tuple[int, int]] = []
 
     def health_check(self) -> HealthStatus:
@@ -107,6 +111,7 @@ class FakeProvider(OCRProvider):
         pages: list[PageResult] = []
         total = len(document.pages)
         for index, page in enumerate(document.pages, 1):
+            self.pages_seen.append(page.number)
             if on_progress:
                 on_progress(index, total)
                 self.progress_calls.append((index, total))

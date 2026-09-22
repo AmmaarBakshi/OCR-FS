@@ -305,6 +305,26 @@ class ConfidenceSettings(BaseModel):
     """Share of tokens that must look like words or figures."""
 
 
+class CacheSettings(BaseModel):
+    """Remembering pages that have already been read.
+
+    OCR at temperature zero is a pure function of the pixels, the model and
+    the prompt, so the same page never needs reading twice. Across a batch
+    that matters structurally: client bundles repeat pages, and a re-run after
+    a crash would otherwise pay full price for work already done.
+
+    Off by default because a cache is persistence, and the rule here is that
+    document text stays in memory unless the operator turns storage on.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    directory: str = "runtime/cache"
+    """Where the page cache lives. Transcribed text is written here, so it
+    belongs wherever the operator keeps client data."""
+
+
 class TesseractSettings(BaseModel):
     """An optional third engine, included to prove the provider abstraction."""
 
@@ -491,6 +511,7 @@ class AppSettings(BaseModel):
     prompts: PromptSettings = Field(default_factory=PromptSettings)
     routing: RoutingSettings = Field(default_factory=RoutingSettings)
     confidence: ConfidenceSettings = Field(default_factory=ConfidenceSettings)
+    cache: CacheSettings = Field(default_factory=CacheSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
     chat: ChatSettings = Field(default_factory=ChatSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
@@ -510,6 +531,7 @@ class AppSettings(BaseModel):
 
 __all__ = [
     "AppSettings",
+    "CacheSettings",
     "ConfidenceSettings",
     "DocumentSettings",
     "EngineMode",

@@ -352,7 +352,7 @@ class TestCascade:
         OCRPipeline(settings, [primary, unlimited_like]).execute(scanned_document)
         assert unlimited_like.process_calls == 1
         # Only the flagged page, not the whole document.
-        assert unlimited_like.progress_calls == [(1, 1)]
+        assert unlimited_like.pages_seen == [2]
 
     def test_verification_reports_what_it_flagged(
         self, settings, scanned_document, unlimited_like
@@ -377,7 +377,7 @@ class TestCascade:
         # Paying twice for every page would hide a configuration problem.
         primary = FakeProvider("qwen_vl", "Qwen2.5-VL", "", failing_pages=(1, 2, 3))
         result = OCRPipeline(settings, [primary, unlimited_like]).execute(scanned_document)
-        assert unlimited_like.progress_calls == [(1, 1)]
+        assert unlimited_like.pages_seen == [1]
         assert any("more than the fallback is allowed" in e.message for e in result.log.events)
 
     def test_routing_stage_is_recorded(self, settings, single_page_document, qwen_like):

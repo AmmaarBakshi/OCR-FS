@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from ocr_fusion.config.schema import AppSettings, EngineMode, ProcessingLocation
@@ -635,6 +636,13 @@ def build_pipeline(
         for pid in provider_ids
         if default_registry.has(pid)
     ]
+
+    if settings.cache.enabled:
+        from ocr_fusion.ocr.cache import PageCache, wrap_with_cache
+
+        cache = PageCache(Path(settings.cache.directory) / "pages.sqlite3")
+        providers = [wrap_with_cache(p, cache) for p in providers]
+
     return OCRPipeline(settings, providers, log=log)
 
 
