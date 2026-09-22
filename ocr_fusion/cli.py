@@ -146,6 +146,153 @@ def command_run(args: argparse.Namespace) -> int:
     return 0 if result.succeeded else 1
 
 
+def _collect_documents(target: str, pattern: str = "*.pdf") -> list[Path]:
+    """Every document under ``target``, or just ``target`` if it is a file."""
+    path = Path(target)
+    if path.is_file():
+        return [path]
+    return sorted(path.rglob(pattern))
+
+
+def command_bench(args: argparse.Namespace) -> int:
+    """Time a configuration over real documents, and say where the time went.
+
+    A performance claim that cannot be re-run is not a claim, so this is the
+    command that has to back every one of them.
+    """
+    from ocr_fusion.bench import benchmark_documents
+
+    settings = _apply_overrides(load_settings(), args)
+    _apply_bench_overrides(settings, args)
+
+    documents = _collect_documents(args.target)
+    if args.limit:
+        documents = documents[: args.limit]
+    if not documents:
+        print(f"error: no documents found at {args.target}", file=sys.stderr)
+        return 2
+
+    print(
+        f"Benchmarking {len(documents)} document(s) - "
+        f"{settings.pipeline.engine_mode.value}, "
+        f"{settings.documents.pdf_render_dpi} DPI, "
+        f"routing {'on' if settings.routing.enabled else 'off'}",
+        file=sys.stderr,
+    )
+
+    def announce(path: Path) -> None:
+        print(f"  {path.name}", file=sys.stderr)
+
+    report = benchmark_documents(
+        documents, settings, label=args.label, on_document=announce
+    )
+    _print_bench_report(report)
+
+    if args.output:
+        Path(args.output).write_text(
+            json.dumps(report.as_dict(), indent=2), encoding="utf-8"
+        )
+        print(f"\nwritten to {args.output}", file=sys.stderr)
+    return 0
+
+
+def command_accuracy(args: argparse.Namespace) -> int:
+    """Score transcription against ground truth taken from PDF text layers."""
+    from ocr_fusion.bench import benchmark_accuracy, build_gold_set
+
+    settings = _apply_overrides(load_settings(), args)
+    _apply_bench_overrides(settings, args)
+
+    gold = build_gold_set(
+        _collect_documents(args.target),
+        max_pages_per_document=args.per_document,
+        limit=args.limit or 0,
+    )
+    if not gold.pages:
+        print(
+            "error: no page carried a text layer usable as ground truth. "
+            "Accuracy can only be scored against born-digital pages.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(
+        f"Scoring {len(gold)} page(s) from {gold.summary()['documents']} document(s) "
+        f"at {settings.documents.pdf_render_dpi} DPI",
+        file=sys.stderr,
+    )
+
+    def announce(entry: object) -> None:
+        print(f"  {Path(entry.source).name} p{entry.page_number}", file=sys.stderr)
+
+    report = benchmark_accuracy(gold, settings, label=args.label, on_page=announce)
+
+    print(f"\n  pages            {report['pages']}")
+    for key, label in (
+        ("mean_seconds", "seconds / page"),
+        ("mean_input_tokens", "image tokens"),
+        ("mean_wer", "word error rate"),
+        ("mean_cer", "char error rate"),
+        ("mean_recall", "word recall"),
+        ("mean_figure_recall", "figure recall"),
+    ):
+        value = report.get(key)
+        print(f"  {label:<16} {'n/a' if value is None else f'{value:.4f}'}")
+
+    if args.output:
+        Path(args.output).write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"\nwritten to {args.output}", file=sys.stderr)
+    return 0
+
+
+def _apply_bench_overrides(settings: AppSettings, args: argparse.Namespace) -> AppSettings:
+    """Apply the benchmark-only switches, so two configurations can be compared."""
+    from ocr_fusion.config.schema import EngineMode
+
+    if getattr(args, "mode", None):
+        settings.pipeline.engine_mode = EngineMode(args.mode)
+    if getattr(args, "no_routing", False):
+        settings.routing.enabled = False
+    if getattr(args, "no_fallback", False):
+        settings.pipeline.fallback_enabled = False
+    return settings
+
+
+def _print_bench_report(report: object) -> None:
+    """Print the report as a table, with n/a for anything not measured."""
+    data = report.as_dict()  # type: ignore[attr-defined]
+    totals = data["totals"]
+    spread = data["page_seconds"]
+
+    print()
+    print(f"  {'documents':<18} {totals['documents']}")
+    print(f"  {'pages':<18} {totals['pages']}")
+    print(f"  {'pages via a model':<18} {totals['pages_needing_ocr']}")
+    print(f"  {'pages avoided':<18} {totals['pages_avoided']}")
+    print(f"  {'total time':<18} {format_duration(totals['seconds'])}")
+    print(f"  {'pages / minute':<18} {totals['pages_per_minute']}")
+    peak = totals["peak_rss_mb"]
+    print(f"  {'peak RSS':<18} {'n/a' if peak is None else f'{peak} MB'}")
+
+    print("\n  per page (seconds)")
+    for key in ("mean", "median", "p90", "p95", "max"):
+        value = spread.get(key)
+        print(f"    {key:<8} {'n/a' if value is None else value}")
+
+    print("\n  per document")
+    for entry in data["documents"]:
+        if entry["error"]:
+            print(f"    {entry['filename'][:44]:<46} {entry['error']}")
+            continue
+        print(
+            f"    {entry['filename'][:44]:<46} "
+            f"{entry['pages']:>4}p  "
+            f"{entry['pages_needing_ocr']:>4} via model  "
+            f"{format_duration(entry['seconds']):>10}  "
+            f"{entry['pages_per_minute']:>7} p/min"
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ocr-fusion",
@@ -190,6 +337,47 @@ def build_parser() -> argparse.ArgumentParser:
 
     providers = sub.add_parser("providers", parents=[common], help="List registered engines.")
     providers.set_defaults(func=command_providers)
+
+    bench_common = argparse.ArgumentParser(add_help=False)
+    bench_common.add_argument(
+        "target", help="A document, or a folder to search for PDFs."
+    )
+    bench_common.add_argument(
+        "--mode",
+        choices=["cascade", "all_engines"],
+        help="Engine mode to benchmark. Default: whatever settings say.",
+    )
+    bench_common.add_argument(
+        "--no-routing",
+        action="store_true",
+        help="Send every page to every engine, as the pipeline did before routing.",
+    )
+    bench_common.add_argument(
+        "--no-fallback", action="store_true", help="Never spend a second engine."
+    )
+    bench_common.add_argument("--limit", type=int, help="Use at most N documents/pages.")
+    bench_common.add_argument("--label", default="run", help="Name for this run in the report.")
+    bench_common.add_argument("-o", "--output", help="Write the full report as JSON.")
+
+    bench = sub.add_parser(
+        "bench",
+        parents=[common, bench_common],
+        help="Time a configuration over real documents.",
+    )
+    bench.set_defaults(func=command_bench)
+
+    accuracy = sub.add_parser(
+        "accuracy",
+        parents=[common, bench_common],
+        help="Score transcription against ground truth from PDF text layers.",
+    )
+    accuracy.add_argument(
+        "--per-document",
+        type=int,
+        default=2,
+        help="Gold pages to take from each document (default: 2).",
+    )
+    accuracy.set_defaults(func=command_accuracy)
 
     return parser
 
