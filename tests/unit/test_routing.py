@@ -299,3 +299,21 @@ class TestMemoryRelease:
         # earlier ones have been handed back.
         assert not pages[0].is_rendered
         assert not pages[1].is_rendered
+
+
+class TestUiCoverage:
+    """The UI must be able to describe anything the pipeline can produce."""
+
+    def test_every_page_class_has_a_label(self):
+        # A new routing class with no label would render as "Unknown" to a
+        # user, which is the one thing routing must never be.
+        from app.components.review_panel import _CLASS_LABEL
+
+        assert set(_CLASS_LABEL) == set(PageClass)
+
+    def test_every_confidence_flag_explains_itself(self):
+        from ocr_fusion.pipeline.confidence import FLAG_REASONS, ConfidenceFlag
+
+        assert set(FLAG_REASONS) == set(ConfidenceFlag)
+        for reason in FLAG_REASONS.values():
+            assert reason and reason[0].islower() and not reason.endswith(".")
