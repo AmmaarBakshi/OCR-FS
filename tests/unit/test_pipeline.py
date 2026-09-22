@@ -466,3 +466,46 @@ class TestRunProgress:
         # Two of the three pages were timed - the last has no successor to
         # report it, which is honest rather than rounded up.
         assert len(pipeline.progress.durations) == 2
+
+
+class TestEngineOrder:
+    """Which engine leads is a configuration choice, not a code change."""
+
+    def test_the_registry_order_is_the_default(self, settings):
+        import ocr_fusion.ocr.providers  # noqa: F401
+
+        pipeline = build_pipeline(settings)
+        assert [p.provider_id for p in pipeline.providers] == [
+            "text_layer",
+            "qwen_vl",
+            "unlimited_ocr",
+        ]
+
+    def test_an_explicit_order_chooses_the_primary_engine(self, settings):
+        import ocr_fusion.ocr.providers  # noqa: F401
+
+        settings.pipeline.engine_order = ["text_layer", "unlimited_ocr", "qwen_vl"]
+        pipeline = build_pipeline(settings)
+        assert [p.provider_id for p in pipeline.providers] == [
+            "text_layer",
+            "unlimited_ocr",
+            "qwen_vl",
+        ]
+
+    def test_an_engine_left_out_of_the_order_still_runs(self, settings):
+        # A partial order must not silently drop an enabled engine.
+        import ocr_fusion.ocr.providers  # noqa: F401
+
+        settings.pipeline.engine_order = ["unlimited_ocr"]
+        pipeline = build_pipeline(settings)
+        ids = [p.provider_id for p in pipeline.providers]
+        assert ids[0] == "unlimited_ocr"
+        assert set(ids) == {"text_layer", "qwen_vl", "unlimited_ocr"}
+
+    def test_a_disabled_engine_named_in_the_order_is_ignored(self, settings):
+        import ocr_fusion.ocr.providers  # noqa: F401
+
+        settings.unlimited_ocr.enabled = False
+        settings.pipeline.engine_order = ["unlimited_ocr", "qwen_vl"]
+        pipeline = build_pipeline(settings)
+        assert "unlimited_ocr" not in [p.provider_id for p in pipeline.providers]

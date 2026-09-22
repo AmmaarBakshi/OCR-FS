@@ -415,6 +415,19 @@ class PipelineSettings(BaseModel):
     engine_mode: EngineMode = EngineMode.CASCADE
     """Whether engines divide the pages between them or all read every page."""
 
+    engine_order: list[str] = Field(default_factory=list)
+    """Provider ids in the order they should run. Empty means the registry's
+    own order.
+
+    Under cascade the first OCR engine in this list is the primary and the
+    rest are fallbacks, so this is where the primary engine is chosen. It
+    matters because the choice is a real trade rather than a ranking: on this
+    project's hardware ``deepseek-ocr:3b`` reads a clean page 3.1x faster than
+    ``qwen2.5vl:3b`` - fast enough to bring nine scanned pages inside 25
+    minutes - but recovered half the figures to Qwen's 89% on a bank
+    statement, and a misread figure is the error that costs money. Qwen leads
+    by default; reorder deliberately, per workload."""
+
     fallback_enabled: bool = True
     """In cascade mode, allow a second engine on pages the confidence check
     flagged. Turning this off makes a run single-pass and its cost flat."""

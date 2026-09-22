@@ -743,7 +743,15 @@ def build_pipeline(
 
     if provider_ids is None:
         enabled = {spec.provider_id for spec in default_registry.enabled_specs(settings)}
-        provider_ids = [pid for pid in PIPELINE_ORDER if pid in enabled]
+        # An explicit order chooses the primary engine under cascade, which is
+        # a real trade rather than a ranking - see PipelineSettings.engine_order.
+        # Anything enabled but unnamed still runs, after the named ones, so a
+        # partial order cannot silently drop an engine.
+        configured = [pid for pid in settings.pipeline.engine_order if pid in enabled]
+        remaining = [
+            pid for pid in PIPELINE_ORDER if pid in enabled and pid not in configured
+        ]
+        provider_ids = configured + remaining
 
     providers = [
         default_registry.create(pid, settings)
