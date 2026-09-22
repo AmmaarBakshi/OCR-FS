@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -24,7 +25,6 @@ class DocumentKind(str, Enum):
     UNKNOWN = "unknown"
 
 
-@dataclass(slots=True)
 class DocumentPage:
     """One renderable page.
 
@@ -32,18 +32,61 @@ class DocumentPage:
     :class:`~ocr_fusion.config.schema.DocumentSettings`. Providers that need a
     file on disk (the CLI backend) materialise it themselves; providers that
     speak HTTP use :meth:`image_base64`.
+
+    The pixels are produced on first access rather than at load time. Most
+    pages of a born-digital PDF are answered from their text layer and never
+    need an image at all, and rasterising one costs ~149ms against ~5ms to
+    read its text - so an 83-page tax return spent about twelve seconds
+    drawing pictures nothing would look at. A page that *is* asked for its
+    image renders once and keeps the result, so nothing renders twice.
     """
 
-    number: int
-    """1-based page number, preserved through the whole pipeline (spec s2)."""
+    __slots__ = ("number", "width", "height", "embedded_text", "dpi", "_image_bytes", "_render")
 
-    image_bytes: bytes
-    width: int
-    height: int
-    embedded_text: str | None = None
-    """Text extracted from a PDF text layer, when one exists. Never OCR output."""
+    def __init__(
+        self,
+        number: int,
+        image_bytes: bytes | None = None,
+        width: int = 0,
+        height: int = 0,
+        embedded_text: str | None = None,
+        dpi: int | None = None,
+        render: Callable[[], bytes] | None = None,
+    ) -> None:
+        if image_bytes is None and render is None:
+            raise ValueError("A page needs either image bytes or a way to render them.")
+        #: 1-based page number, preserved through the whole pipeline (spec s2).
+        self.number = number
+        self.width = width
+        self.height = height
+        #: Text from a PDF text layer, when one exists. Never OCR output.
+        self.embedded_text = embedded_text
+        self.dpi = dpi
+        self._image_bytes = image_bytes
+        self._render = render
 
-    dpi: int | None = None
+    @property
+    def image_bytes(self) -> bytes:
+        """PNG bytes for this page, rendering them on first access."""
+        if self._image_bytes is None:
+            assert self._render is not None  # guarded in __init__
+            self._image_bytes = self._render()
+        return self._image_bytes
+
+    @property
+    def is_rendered(self) -> bool:
+        """Whether the pixels exist yet. Lets routing report what it avoided."""
+        return self._image_bytes is not None
+
+    def release_image(self) -> None:
+        """Drop the rendered pixels, keeping the ability to render them again.
+
+        Used when streaming a long document: a finished page's image is dead
+        weight, and on a 16 GB machine holding every page of a 500-page scan
+        is the difference between running and swapping.
+        """
+        if self._render is not None:
+            self._image_bytes = None
 
     @property
     def has_text_layer(self) -> bool:
@@ -61,9 +104,10 @@ class DocumentPage:
             "width": self.width,
             "height": self.height,
             "dpi": self.dpi,
-            "size_bytes": len(self.image_bytes),
+            "size_bytes": len(self._image_bytes) if self._image_bytes else None,
             "has_text_layer": self.has_text_layer,
             "embedded_text_chars": len(self.embedded_text or ""),
+            "rendered": self.is_rendered,
         }
 
 

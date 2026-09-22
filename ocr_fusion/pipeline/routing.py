@@ -12,13 +12,18 @@ only cheap, deterministic signals - the PDF's text layer, an exact content
 hash, and the proportion of dark pixels. No model is consulted to decide
 whether to consult a model, which would defeat the purpose.
 
-The routing rules are ordered by cost, cheapest first:
+The routing rules are ordered by what each one costs to evaluate:
 
-1. **Blank** - almost no ink and no text. Nothing to read.
-2. **Duplicate** - byte-identical to a page already routed in this run.
-3. **Text layer** - the PDF states its own text and the layer passes
-   :func:`~ocr_fusion.documents.textlayer.assess_text_layer`.
+1. **Text layer** - the PDF states its own text and the layer passes
+   :func:`~ocr_fusion.documents.textlayer.assess_text_layer`. Reading it
+   needs no pixels, so a page settled here is never even rendered.
+2. **Blank** - almost no ink and no text. Nothing to read.
+3. **Duplicate** - byte-identical to a page already routed in this run.
 4. **OCR** - everything else, which is the only class that costs a model.
+
+Rules 2-4 need pixels, and asking a page for its pixels renders it. Putting
+the free rule first is what keeps an 83-page born-digital PDF from
+rasterising a single page: routing it takes 0.27s in total.
 
 Duplicate detection is an exact hash of the rendered bytes, never a
 perceptual one. On financial documents two pages can be visually near
@@ -186,8 +191,10 @@ def measure_ink(page: DocumentPage, *, thumbnail: int = 200, threshold: int = 20
 def route_document(document: Document, settings: RoutingSettings) -> RoutingPlan:
     """Decide what each page of ``document`` needs.
 
-    Pure analysis: nothing here renders, converts or transcribes anything, and
-    the document is not modified.
+    Nothing is transcribed here and the document is not modified. Pages the
+    text layer cannot answer are rendered, because the later rules need
+    pixels - but those are exactly the pages an engine was going to render
+    anyway, so the work is moved rather than added.
     """
     import time
 
@@ -196,17 +203,34 @@ def route_document(document: Document, settings: RoutingSettings) -> RoutingPlan
     seen: dict[str, int] = {}
 
     for page in document.pages:
-        fingerprint = page_fingerprint(page)
         assessment = assess_text_layer(
             page.embedded_text,
             min_words=settings.text_layer_min_words,
             min_quality=settings.text_layer_min_quality,
         )
 
-        ink: float | None = None
-        if settings.skip_blank_pages and not assessment.usable:
-            ink = measure_ink(page, threshold=settings.ink_threshold)
+        # The text layer is free to read; the fingerprint and the ink ratio
+        # both need pixels, and asking for pixels renders the page. So a page
+        # the text layer already answers is settled here and never rendered -
+        # which is the whole reason rendering is deferred in the first place.
+        if settings.use_text_layer and assessment.usable:
+            plan.routes.append(
+                PageRoute(
+                    page_number=page.number,
+                    page_class=PageClass.TEXT_LAYER,
+                    reason=assessment.reason,
+                    fingerprint="",
+                    text_layer=assessment,
+                )
+            )
+            continue
 
+        fingerprint = page_fingerprint(page)
+        ink = (
+            measure_ink(page, threshold=settings.ink_threshold)
+            if settings.skip_blank_pages
+            else None
+        )
         plan.routes.append(
             _classify(page, fingerprint, assessment, ink, seen, settings)
         )
@@ -224,7 +248,11 @@ def _classify(
     seen: dict[str, int],
     settings: RoutingSettings,
 ) -> PageRoute:
-    """Apply the routing rules to one page, cheapest class first."""
+    """Classify a page the text layer could not answer.
+
+    Reached only once the page has been rendered, so the fingerprint and the
+    ink ratio are available.
+    """
     common = {
         "page_number": page.number,
         "fingerprint": fingerprint,
@@ -250,13 +278,6 @@ def _classify(
             page_class=PageClass.DUPLICATE,
             reason=f"the page is identical to page {original}",
             duplicate_of=original,
-            **common,
-        )
-
-    if settings.use_text_layer and assessment.usable:
-        return PageRoute(
-            page_class=PageClass.TEXT_LAYER,
-            reason=assessment.reason,
             **common,
         )
 

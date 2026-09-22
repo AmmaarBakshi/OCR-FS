@@ -207,6 +207,16 @@ class TestComposition:
 
         settings.unlimited_ocr.enabled = False
         pipeline = build_pipeline(settings)
+        # Text-layer extraction leads: it answers most pages for nothing, so
+        # the models only ever see what it could not.
+        assert [p.provider_id for p in pipeline.providers] == ["text_layer", "qwen_vl"]
+
+    def test_text_layer_extraction_can_be_switched_off(self, settings):
+        import ocr_fusion.ocr.providers  # noqa: F401
+
+        settings.text_layer.enabled = False
+        settings.unlimited_ocr.enabled = False
+        pipeline = build_pipeline(settings)
         assert [p.provider_id for p in pipeline.providers] == ["qwen_vl"]
 
     def test_build_pipeline_respects_explicit_ids(self, settings):

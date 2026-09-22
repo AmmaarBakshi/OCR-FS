@@ -9,6 +9,7 @@ run on every change (spec s18).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import io
 
 import pytest
@@ -75,6 +76,7 @@ class FakeProvider(OCRProvider):
         self.failing_pages = failing_pages
         self.duration = duration
         self.process_calls = 0
+        self.progress_calls: list[tuple[int, int]] = []
 
     def health_check(self) -> HealthStatus:
         if self.healthy:
@@ -86,7 +88,11 @@ class FakeProvider(OCRProvider):
     def get_metadata(self) -> dict:
         return {"engine": self.provider_name, "backend": "fake"}
 
-    def process(self, document: Document) -> OCRResult:
+    def process(
+        self,
+        document: Document,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> OCRResult:
         self.process_calls += 1
         if self.raises:
             raise RuntimeError("engine crashed")
@@ -99,7 +105,11 @@ class FakeProvider(OCRProvider):
             )
 
         pages: list[PageResult] = []
-        for page in document.pages:
+        total = len(document.pages)
+        for index, page in enumerate(document.pages, 1):
+            if on_progress:
+                on_progress(index, total)
+                self.progress_calls.append((index, total))
             if page.number in self.failing_pages:
                 pages.append(
                     PageResult(
