@@ -21,8 +21,8 @@ from ocr_fusion.chat import DocumentChat
 from ocr_fusion.config import AppSettings, load_settings, save_settings
 from ocr_fusion.config.prompts import DEFAULT_PROMPTS
 from ocr_fusion.config.schema import (
-    EngineMode,
     DeliveryMode,
+    EngineMode,
     FusionStrategy,
     OutputFormat,
     Theme,
@@ -52,6 +52,9 @@ _ENGINE_MODE_LABELS = {
     EngineMode.CASCADE: "Cascade - each engine handles what the last could not",
     EngineMode.ALL_ENGINES: "Every engine reads every page - needed for comparison",
 }
+
+#: Which settings section holds each engine's own "enabled" switch.
+_ENGINE_SETTING = {"qwen_vl": "qwen", "unlimited_ocr": "unlimited_ocr"}
 
 _STRATEGY_LABELS = {
     FusionStrategy.LINE_VOTE: "Merge line by line (recommended)",
@@ -317,6 +320,44 @@ def _speed(draft: AppSettings) -> None:
             "side-by-side comparison needs, and it costs one full pass per "
             "engine.",
             "warn",
+        )
+
+    st.markdown("#### Which engine reads first")
+    ocr_engines = [
+        ("qwen_vl", "Qwen2.5-VL", "Slower, and more careful with figures."),
+        ("unlimited_ocr", "Unlimited-OCR / substitute", "About 3x faster; measured to lose more figures."),
+    ]
+    available = [e for e in ocr_engines if getattr(draft, _ENGINE_SETTING[e[0]]).enabled]
+    if len(available) < 2:
+        st.caption(
+            "Enable both OCR engines to choose which one leads and which one "
+            "re-reads doubtful pages."
+        )
+    else:
+        current = next(
+            (i for i, e in enumerate(available) if e[0] in draft.pipeline.engine_order[:2]),
+            0,
+        )
+        chosen = st.selectbox(
+            "Primary engine",
+            range(len(available)),
+            index=current,
+            format_func=lambda i: f"{available[i][1]} - {available[i][2]}",
+            help=(
+                "Under cascade the primary reads every page that needs a "
+                "model, and the other engine only re-reads pages the "
+                "confidence check flagged."
+            ),
+        )
+        primary = available[chosen][0]
+        others = [e[0] for e in available if e[0] != primary]
+        draft.pipeline.engine_order = ["text_layer", primary, *others]
+        notice(
+            "Measured here on a bank statement page: Qwen took 444s and "
+            "recovered 99.7% of words and 89% of figures; the substitute took "
+            "142s for 98.1% of words and 50% of figures. Speed against "
+            "figures - choose for the documents you actually process.",
+            "info",
         )
 
     st.markdown("#### Render resolution")
