@@ -219,6 +219,43 @@ class TextLayerSettings(BaseModel):
     broken font encoding, which extracts as confident-looking nonsense."""
 
 
+class RoutingSettings(BaseModel):
+    """Which pages are allowed to cost a model.
+
+    Every switch here trades a few milliseconds of analysis against the
+    several minutes a page costs a vision model on CPU, so the defaults are
+    all on. Each can be turned off to force the old behaviour of running every
+    engine over every page.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    """Off means no routing: every page goes to every enabled engine."""
+
+    use_text_layer: bool = True
+    """Answer a page from the PDF's own text when that text is trustworthy."""
+
+    detect_duplicates: bool = True
+    """Reuse the result of a byte-identical page seen earlier in the run.
+
+    Exact hashing only. Two pages of a bank statement can look alike and
+    differ only in the figures, so a perceptual hash would be dangerous
+    here in a way it would not be on, say, photographs."""
+
+    skip_blank_pages: bool = True
+
+    blank_ink_ratio: float = Field(default=0.002, ge=0.0, le=1.0)
+    """Below this share of dark pixels a page is treated as blank. Set low
+    deliberately: a page carrying only a signature must still be read."""
+
+    ink_threshold: int = Field(default=200, ge=0, le=255)
+    """Grey level at or below which a pixel counts as ink."""
+
+    text_layer_min_words: int = Field(default=25, ge=0)
+    text_layer_min_quality: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
 class TesseractSettings(BaseModel):
     """An optional third engine, included to prove the provider abstraction."""
 
@@ -389,6 +426,7 @@ class AppSettings(BaseModel):
     unlimited_ocr: UnlimitedOCRSettings = Field(default_factory=UnlimitedOCRSettings)
     tesseract: TesseractSettings = Field(default_factory=TesseractSettings)
     prompts: PromptSettings = Field(default_factory=PromptSettings)
+    routing: RoutingSettings = Field(default_factory=RoutingSettings)
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
     chat: ChatSettings = Field(default_factory=ChatSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
@@ -418,6 +456,7 @@ __all__ = [
     "PrivacySettings",
     "ProcessingLocation",
     "PromptSettings",
+    "RoutingSettings",
     "QwenSettings",
     "TesseractSettings",
     "TextLayerSettings",
