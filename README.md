@@ -344,6 +344,10 @@ Pick a point with `--profile fast|balanced|accurate`, or in Settings › Speed.
 `python -m ocr_fusion.cli profiles` prints the table above with the current
 setting marked.
 
+Full measurements, including the before/after on a document that cannot be
+routed around and the head-to-head between the two models, are in
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+
 ### Measuring it yourself
 
 Every number here came from the bundled harness, on real documents:

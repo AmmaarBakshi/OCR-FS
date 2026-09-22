@@ -110,6 +110,9 @@ the path to the genuine model.
 
 ## Where the time actually goes
 
+Full measurements, with method and caveats, are in `docs/PERFORMANCE.md`.
+The short version:
+
 Measured on the development machine (i5-10310U, 4 cores, 16 GB, no usable
 GPU), one 150 DPI page through `qwen2.5vl:3b`:
 
