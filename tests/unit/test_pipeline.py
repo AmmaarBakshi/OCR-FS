@@ -432,3 +432,36 @@ class TestCascade:
         result = OCRPipeline(settings, [primary, second]).execute(scanned_document)
         assert result.comparison is not None
         assert result.comparison.numeric_conflicts
+
+
+class TestRunProgress:
+    """A nine-page run takes tens of minutes; a spinner is not enough."""
+
+    def test_no_estimate_before_a_page_has_finished(self):
+        from ocr_fusion.pipeline.pipeline import RunProgress
+
+        progress = RunProgress(pages_total=9)
+        assert progress.estimated_remaining_seconds is None
+        assert "before estimating" in progress.describe()
+
+    def test_the_estimate_comes_from_this_document(self):
+        # Page cost varies tenfold with how much text is on the page, so a
+        # constant would be worse than useless.
+        from ocr_fusion.pipeline.pipeline import RunProgress
+
+        progress = RunProgress(pages_total=9, pages_done=1, durations=[400.0])
+        assert progress.estimated_remaining_seconds == pytest.approx(3200.0)
+        assert "53 min" in progress.describe()
+
+    def test_nothing_is_shown_when_no_page_needs_an_engine(self):
+        from ocr_fusion.pipeline.pipeline import RunProgress
+
+        assert RunProgress().describe() == ""
+
+    def test_the_run_reports_progress_as_it_goes(self, settings, scanned_document, qwen_like):
+        pipeline = OCRPipeline(settings, [qwen_like])
+        pipeline.execute(scanned_document)
+        assert pipeline.progress.pages_total == 3
+        # Two of the three pages were timed - the last has no successor to
+        # report it, which is honest rather than rounded up.
+        assert len(pipeline.progress.durations) == 2

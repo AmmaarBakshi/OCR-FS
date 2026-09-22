@@ -17,7 +17,9 @@ can still inspect whatever did succeed (spec s13).
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -48,6 +50,58 @@ STAGE_COMPARISON = "comparison"
 STAGE_FUSION = "fusion"
 
 
+@dataclass
+class RunProgress:
+    """How far a run has got, and how much longer it is likely to take.
+
+    A nine-page run takes tens of minutes on CPU, and a progress bar with no
+    estimate behind it is only slightly better than a spinner. The estimate
+    comes from the pages this run has already finished, never from a constant:
+    page cost varies by a factor of ten with how much text is on the page, so
+    a figure derived from this document is the only one worth showing - and
+    before any page has finished there is no figure, and it says so.
+    """
+
+    engine: str = ""
+    page: int = 0
+    """Page number within the current engine's share of the work."""
+
+    pages_in_engine: int = 0
+    pages_done: int = 0
+    """Pages finished across the whole run."""
+
+    pages_total: int = 0
+    """Pages that will reach an engine, known from routing before work starts."""
+
+    durations: list[float] = field(default_factory=list)
+
+    @property
+    def seconds_per_page(self) -> float | None:
+        if not self.durations:
+            return None
+        return sum(self.durations) / len(self.durations)
+
+    @property
+    def estimated_remaining_seconds(self) -> float | None:
+        rate = self.seconds_per_page
+        if rate is None or self.pages_total <= self.pages_done:
+            return None
+        return rate * (self.pages_total - self.pages_done)
+
+    def describe(self) -> str:
+        """One line for the UI. Says "working it out" rather than guessing."""
+        if not self.pages_total:
+            return ""
+        position = f"Page {self.pages_done + 1} of {self.pages_total}"
+        remaining = self.estimated_remaining_seconds
+        if remaining is None:
+            return f"{position} - timing the first page before estimating"
+        minutes = remaining / 60
+        if minutes < 1:
+            return f"{position} - under a minute left"
+        return f"{position} - about {minutes:.0f} min left"
+
+
 class OCRPipeline:
     """Executes OCR providers in sequence and reconciles their output."""
 
@@ -66,6 +120,8 @@ class OCRPipeline:
         )
         #: Per-page confidence from the last run, populated by verification.
         self.confidence: list[PageConfidence] = []
+        #: Live progress, readable by a UI while execute() is running.
+        self.progress = RunProgress()
 
     # -- composition -------------------------------------------------------
 
@@ -110,10 +166,9 @@ class OCRPipeline:
 
     def execute(self, document: Document) -> PipelineResult:
         """Run the full pipeline over ``document``."""
-        import time
-
         started = time.perf_counter()
         self.confidence = []
+        self.progress = RunProgress()
         self._prepare_stages()
 
         result = PipelineResult(
@@ -228,13 +283,30 @@ class OCRPipeline:
         total_pages = document.page_count
 
         pages = document.pages
+        clock = {"page_started": time.perf_counter()}
 
         def report_progress(current: int, total: int) -> None:
+            now = time.perf_counter()
+            if current > 1:
+                # The previous page has just finished; its cost is the best
+                # evidence available for what the next one will take.
+                self.progress.durations.append(now - clock["page_started"])
+                self.progress.pages_done += 1
+            clock["page_started"] = now
+            self.progress.engine = name
+            self.progress.page = current
+            self.progress.pages_in_engine = total
+
             stage = self.log.stage(key)
             stage.detail = f"Processing page {current} of {total}..."
             # An info event as well as the stage detail: a nine-page run sits
             # inside this call for minutes and silence reads as a hang.
-            self.log.info(f"{name} processing page {current} of {total}...", stage=key)
+            estimate = self.progress.describe()
+            self.log.info(
+                f"{name} processing page {current} of {total}"
+                + (f" - {estimate}" if estimate else "..."),
+                stage=key,
+            )
 
             # The engine has finished with the previous page, and a rendered
             # page is ~200 KB. Holding all of them costs a 500-page scan about
@@ -303,6 +375,9 @@ class OCRPipeline:
         ]
         ocr_pages = plan.ocr_pages
 
+        # Known before any work starts, which is what makes an estimate
+        # possible rather than a guess that improves as it goes.
+        self.progress.pages_total = len(ocr_pages)
         ocr_providers = [p for p in self.providers if p.provider_id != "text_layer"]
         extractor = next(
             (p for p in self.providers if p.provider_id == "text_layer"), None
@@ -586,8 +661,6 @@ class OCRPipeline:
             self.log.skip_stage(STAGE_FUSION, "no engine produced text")
             return None
 
-        import time
-
         self.log.start_stage(STAGE_FUSION, "Generating final result")
         started = time.perf_counter()
         try:
@@ -688,6 +761,7 @@ def build_pipeline(
 
 
 __all__ = [
+    "RunProgress",
     "STAGE_COMPARISON",
     "STAGE_FUSION",
     "STAGE_ROUTING",

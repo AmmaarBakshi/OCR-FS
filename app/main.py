@@ -277,9 +277,18 @@ def _execute(document: Document, settings) -> None:
         """Redraw the pipeline as each stage reports in."""
         with stage_slot.container():
             pipeline_view.render_stage_row(pipeline.log.ordered_stages())
+        # The estimate comes from the pages this document has already cost,
+        # so it is silent until there is something to base it on.
+        estimate = pipeline.progress.describe()
         status_slot.markdown(
             f'<div style="font-size:13px;color:var(--ink-soft);margin-top:6px;">'
-            f"{event.message}</div>",
+            f"{event.message}</div>"
+            + (
+                f'<div style="font-size:12px;color:var(--ink-faint);margin-top:2px;">'
+                f"{estimate}</div>"
+                if estimate
+                else ""
+            ),
             unsafe_allow_html=True,
         )
 

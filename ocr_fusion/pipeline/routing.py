@@ -36,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -196,8 +197,6 @@ def route_document(document: Document, settings: RoutingSettings) -> RoutingPlan
     pixels - but those are exactly the pages an engine was going to render
     anyway, so the work is moved rather than added.
     """
-    import time
-
     started = time.perf_counter()
     plan = RoutingPlan()
     seen: dict[str, int] = {}
