@@ -492,11 +492,18 @@ class DocumentSettings(BaseModel):
         120          1,957       398        0.028    0.990
         150          2,979       551        0.021    0.997
 
-    120 is the knee. It costs 28% less time than 150 for 0.7 points of
-    recall, and below it accuracy falls off a cliff - at 96 the word error
-    rate nearly triples, because blurred text does not merely get misread,
-    it makes the model ramble and repeat. Cheaper is not automatically
-    faster and is never automatically better."""
+    120 is the knee: 28% less time than 150 for 0.7 points of recall.
+
+    Going below it is not a trade, it is a loss, and the token counts show
+    why. The text prompt costs a fixed 265 tokens whatever the image, so
+    shrinking the image has a floor on what it can save. And the model
+    enforces a minimum pixel budget: dividing pixels by image tokens gives
+    782, 796 and 775 px/token at 96, 120 and 150 DPI - linear - but 452 at
+    72, which means the 72 DPI render is being padded back up. So at 72 DPI
+    you pay very nearly the 96 DPI token cost for a blurrier page. And
+    blurred text does not merely get misread: it makes the model ramble, so
+    output tokens rise as well. Cheaper is not automatically faster, and is
+    never automatically better."""
 
     max_image_dimension: int = Field(default=2048, ge=256)
     """Longest edge, in pixels. Larger pages are downscaled before inference."""

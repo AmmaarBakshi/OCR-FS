@@ -135,8 +135,12 @@ DPI swept against ground truth from a page's own text layer:
 | **120** | 1,957 | 398 | 0.028 | 0.990 |
 | 150 | 2,979 | 551 | 0.021 | 0.997 |
 
-120 is the default. Lower is a trap: blurred text does not merely get misread,
-it makes the model ramble, so accuracy and output tokens both get worse.
+120 is the default. Lower is a trap, and the token counts say why: the text
+prompt is a fixed 265 tokens whatever the image, and the model pads small
+images up to a minimum pixel budget (782/796/775 px per image token at
+96/120/150 DPI, but 452 at 72 - the 72 DPI render is being padded back up).
+So 72 DPI costs nearly the same tokens as 96 for a blurrier page, and blurred
+text makes the model ramble, so output tokens rise too.
 
 ## Gotchas
 
