@@ -527,12 +527,14 @@ class OCRPipeline:
             self.log.skip_stage(STAGE_COMPARISON, reason)
             return None
 
-        first, second = usable[0], usable[1]
-        shared = sorted(
-            {p.page_number for p in first.pages if p.text.strip()}
-            & {p.page_number for p in second.pages if p.text.strip()}
-        )
-        if not shared:
+        # The pair with the most pages in common, not simply the first two.
+        # Under cascade the engines cover different pages: text extraction
+        # might hold sixteen, the primary engine three and a fallback one, so
+        # taking the first two would compare two disjoint sets and conclude
+        # there was nothing to compare - exactly when the fallback has given
+        # us the one genuine disagreement worth showing.
+        first, second, shared = _best_comparison_pair(usable)
+        if first is None or second is None or not shared:
             # Expected in cascade mode: engines divided the pages, so no page
             # has two readings to disagree about. That is the saving working,
             # not a failure.
@@ -620,6 +622,26 @@ class OCRPipeline:
             message=f"Final result generated ({fusion.strategy}) - {fusion.detail}",
         )
         return fusion
+
+
+def _best_comparison_pair(
+    results: list[OCRResult],
+) -> tuple[OCRResult | None, OCRResult | None, list[int]]:
+    """The two engines that read the most pages in common.
+
+    Ties break towards the earlier pair in pipeline order, so the choice is
+    deterministic and a run twice over the same document compares the same
+    two engines.
+    """
+    best: tuple[OCRResult | None, OCRResult | None, list[int]] = (None, None, [])
+    for index, first in enumerate(results):
+        pages_a = {p.page_number for p in first.pages if p.text.strip()}
+        for second in results[index + 1 :]:
+            pages_b = {p.page_number for p in second.pages if p.text.strip()}
+            shared = sorted(pages_a & pages_b)
+            if len(shared) > len(best[2]):
+                best = (first, second, shared)
+    return best
 
 
 def _text_for_pages(result: OCRResult, pages: list[int]) -> str:

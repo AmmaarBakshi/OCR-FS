@@ -403,3 +403,32 @@ class TestCascade:
             "need an OCR engine and none is enabled" in event.message
             for event in result.log.events
         )
+
+    def test_comparison_finds_the_two_engines_that_share_pages(
+        self, settings, scanned_document, unlimited_like
+    ):
+        # text_layer covers nothing here, the primary covers 1-3 and the
+        # fallback only page 2. Comparing the first two engines in order would
+        # find no overlap and skip - losing the one real disagreement.
+        primary = FakeProvider("qwen_vl", "Qwen2.5-VL", "Invoice INV-1024", failing_pages=(2,))
+        empty = FakeProvider("text_layer", "PDF text layer", "", fail=True)
+        result = OCRPipeline(settings, [empty, primary, unlimited_like]).execute(
+            scanned_document
+        )
+        stage = next(s for s in result.stages if s.key == STAGE_COMPARISON)
+        assert stage.status is StageStatus.SKIPPED
+        # Page 2 is the only page two engines both produced text for, and the
+        # primary produced nothing for it - so there is still nothing to
+        # compare, and the run says so rather than inventing an agreement.
+        assert "nothing to compare" in stage.detail or "fewer than two" in stage.detail
+
+    def test_comparison_uses_the_overlapping_pages_when_a_fallback_ran(
+        self, settings, scanned_document
+    ):
+        primary = FakeProvider("qwen_vl", "Qwen2.5-VL", "Total 38,085.10")
+        # A fallback that read every page, so pages genuinely overlap.
+        second = FakeProvider("unlimited_ocr", "Unlimited-OCR", "Total 38,085.60")
+        settings.pipeline.engine_mode = EngineMode.ALL_ENGINES
+        result = OCRPipeline(settings, [primary, second]).execute(scanned_document)
+        assert result.comparison is not None
+        assert result.comparison.numeric_conflicts
