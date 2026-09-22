@@ -21,6 +21,7 @@ from ocr_fusion.chat import DocumentChat
 from ocr_fusion.config import AppSettings, load_settings, save_settings
 from ocr_fusion.config.prompts import DEFAULT_PROMPTS
 from ocr_fusion.config.schema import (
+    EngineMode,
     DeliveryMode,
     FusionStrategy,
     OutputFormat,
@@ -30,6 +31,7 @@ from ocr_fusion.config.schema import (
 
 CATEGORIES = [
     "General",
+    "Speed",
     "OCR Models",
     "Unlimited OCR",
     "Prompts",
@@ -46,6 +48,11 @@ _BACKEND_LABELS = {
     UnlimitedBackend.OLLAMA: "Local substitute model via Ollama — runs without a GPU",
 }
 
+_ENGINE_MODE_LABELS = {
+    EngineMode.CASCADE: "Cascade - each engine handles what the last could not",
+    EngineMode.ALL_ENGINES: "Every engine reads every page - needed for comparison",
+}
+
 _STRATEGY_LABELS = {
     FusionStrategy.LINE_VOTE: "Merge line by line (recommended)",
     FusionStrategy.PREFER_PRIMARY: "Always use the first engine",
@@ -58,6 +65,7 @@ _STRATEGY_LABELS = {
 #: says what you are looking at instead of making you infer it from the fields.
 _CATEGORY_BLURBS = {
     "General": "Appearance, language and the interface mode.",
+    "Speed": "How much work each page is worth, and what that costs.",
     "OCR Models": "Where Ollama runs, and how the first engine reads a page.",
     "Unlimited OCR": "How the second engine runs, and which model it uses.",
     "Prompts": "The exact instructions each model is given.",
@@ -81,6 +89,7 @@ def render() -> None:
 
     renderers = {
         "General": _general,
+        "Speed": _speed,
         "OCR Models": _models,
         "Unlimited OCR": _unlimited,
         "Prompts": _prompts,
@@ -188,6 +197,165 @@ def _general(draft: AppSettings) -> None:
         "Developer Mode adds the metrics grid, processing log and raw engine "
         "responses to the results page."
     )
+
+
+def _speed(draft: AppSettings) -> None:
+    """The settings that decide how much computation a page is worth.
+
+    Gathered on one page because they trade against each other: raising the
+    render resolution and sending every page to every engine are the same
+    decision made twice, and seeing them apart is how a configuration ends up
+    slow for no reason anybody chose.
+    """
+    from ocr_fusion.config.profiles import (
+        PROFILE_MEASUREMENTS,
+        PerformanceProfile,
+        apply_profile,
+        current_profile,
+    )
+
+    st.markdown("#### Profile")
+    profiles = list(PerformanceProfile)
+    active = current_profile(draft)
+
+    def label(index: int) -> str:
+        profile = profiles[index]
+        measured = PROFILE_MEASUREMENTS[profile]
+        return (
+            f"{profile.value.title()} - about "
+            f"{measured['seconds_per_scanned_page']:.0f}s a scanned page, "
+            f"{measured['recall']:.0%} of words recovered"
+        )
+
+    chosen = st.selectbox(
+        "Speed and accuracy",
+        range(len(profiles)),
+        index=profiles.index(active) if active else 1,
+        format_func=label,
+        help=(
+            "Measured on a real form page scored against the text that page "
+            "was authored with. Per scanned page - a page with a usable text "
+            "layer costs milliseconds under every profile."
+        ),
+    )
+    if st.button("Apply this profile", use_container_width=False):
+        apply_profile(draft, profiles[chosen])
+        state.update_settings(draft)
+        st.rerun()
+    if active is None:
+        notice(
+            "The current settings do not match a profile. That is fine - the "
+            "controls below are the ones a profile sets.",
+            "info",
+        )
+
+    st.markdown("#### Which pages reach a model")
+    routing = draft.routing
+    routing.enabled = st.checkbox(
+        "Decide per page how much work it is worth",
+        value=routing.enabled,
+        help=(
+            "Off means every page goes to every engine. On this project's "
+            "reference corpus that is about six times the work for no gain."
+        ),
+    )
+    if routing.enabled:
+        left, right = st.columns(2)
+        with left:
+            routing.use_text_layer = st.checkbox(
+                "Use the text a PDF already contains",
+                value=routing.use_text_layer,
+                help=(
+                    "On a born-digital page that text is what the file says, "
+                    "rather than a transcription of a picture of it - so it is "
+                    "both free and more accurate."
+                ),
+            )
+            routing.skip_blank_pages = st.checkbox(
+                "Skip blank pages", value=routing.skip_blank_pages
+            )
+        with right:
+            routing.detect_duplicates = st.checkbox(
+                "Reuse identical pages",
+                value=routing.detect_duplicates,
+                help=(
+                    "Exact matches only. Two statement pages can look alike "
+                    "and differ only in the figures."
+                ),
+            )
+            routing.text_layer_min_words = st.number_input(
+                "Words needed to trust a text layer",
+                min_value=0,
+                max_value=500,
+                value=routing.text_layer_min_words,
+                help="Guards against a page number stamped on a scan.",
+            )
+
+    st.markdown("#### How much the engines do")
+    pipeline = draft.pipeline
+    modes = list(EngineMode)
+    pipeline.engine_mode = modes[
+        st.selectbox(
+            "Engine mode",
+            range(len(modes)),
+            index=modes.index(pipeline.engine_mode),
+            format_func=lambda i: _ENGINE_MODE_LABELS[modes[i]],
+        )
+    ]
+    if pipeline.engine_mode is EngineMode.CASCADE:
+        pipeline.fallback_enabled = st.checkbox(
+            "Let a second engine re-read doubtful pages",
+            value=pipeline.fallback_enabled,
+            help=(
+                "Only pages that came back empty, cut off, repetitive or too "
+                "thin for the ink on the page."
+            ),
+        )
+    else:
+        notice(
+            "Every enabled engine will read every page. That is what the "
+            "side-by-side comparison needs, and it costs one full pass per "
+            "engine.",
+            "warn",
+        )
+
+    st.markdown("#### Render resolution")
+    draft.documents.pdf_render_dpi = st.slider(
+        "DPI",
+        min_value=72,
+        max_value=300,
+        value=draft.documents.pdf_render_dpi,
+        step=6,
+        help=(
+            "The single biggest lever on inference cost: a vision model's "
+            "prompt is mostly image tokens, and image tokens scale with pixel "
+            "area."
+        ),
+    )
+    st.caption(
+        "Measured here: 150 DPI 551s a page at 99.7% recall, 120 DPI 398s at "
+        "99.0%, 96 DPI 326s at 92.7%. Below 120 accuracy falls away quickly - "
+        "blurred text does not just get misread, it makes the model ramble."
+    )
+
+    st.markdown("#### Remembering pages")
+    draft.cache.enabled = st.checkbox(
+        "Never read the same page twice",
+        value=draft.cache.enabled,
+        help=(
+            "Writes transcribed text to disk so a repeated page, or a re-run "
+            "after a crash, costs nothing."
+        ),
+    )
+    if draft.cache.enabled:
+        draft.cache.directory = st.text_input(
+            "Where to keep it", value=draft.cache.directory
+        )
+        notice(
+            "This writes document text to disk. Keep it wherever client data "
+            "is allowed to live.",
+            "warn",
+        )
 
 
 def _models(draft: AppSettings) -> None:
