@@ -3,15 +3,15 @@
 Two things are measured and they answer different questions.
 
 :func:`benchmark_documents` runs whole documents through the pipeline and
-reports what an operator experiences: wall time, pages per minute, peak
-memory, and where the time went stage by stage. This is the number that has
+reports what an operator experiences: wall time, pages per minute, memory
+in use, and where the time went stage by stage. This is the number that has
 to come down.
 
 :func:`benchmark_accuracy` renders gold pages at a given DPI and scores the
 transcription against the text layer that page was authored with. This is the
 number that must not come down with it.
 
-Neither invents a measurement. A metric the run could not observe - peak RSS
+Neither invents a measurement. A metric the run could not observe - memory
 without psutil, tokens from an engine that reports none - comes back as
 ``None`` and prints as ``n/a`` rather than as a zero.
 """
@@ -30,14 +30,23 @@ from ocr_fusion.documents import load_document
 from ocr_fusion.pipeline.result import PipelineResult
 
 
-def _peak_rss_mb() -> float | None:
-    """Resident memory in MB, or ``None`` when it cannot be observed."""
+def _memory_in_use_mb() -> float | None:
+    """Physical memory in use across the machine, in MB.
+
+    Machine-wide rather than this process, because the models do not live in
+    this process - they live in Ollama's. Reporting our own resident size gave
+    a reassuring 26 MB while the box was 8.5 GB into its page file, which is
+    the opposite of what a memory metric is for.
+
+    ``None`` when it cannot be observed; never a zero.
+    """
     try:
         import psutil
     except ImportError:
         return None
     try:
-        return psutil.Process().memory_info().rss / (1024 * 1024)
+        memory = psutil.virtual_memory()
+        return (memory.total - memory.available) / (1024 * 1024)
     except Exception:  # noqa: BLE001 - a metric, not a feature
         return None
 
@@ -76,7 +85,7 @@ class DocumentTiming:
     pages_avoided: int
     stages: dict[str, float] = field(default_factory=dict)
     page_timings: list[PageTiming] = field(default_factory=list)
-    peak_rss_mb: float | None = None
+    memory_in_use_mb: float | None = None
     final_words: int = 0
     error: str | None = None
 
@@ -93,7 +102,7 @@ class DocumentTiming:
             "pages_needing_ocr": self.pages_needing_ocr,
             "pages_avoided": self.pages_avoided,
             "pages_per_minute": round(self.pages_per_minute, 3),
-            "peak_rss_mb": None if self.peak_rss_mb is None else round(self.peak_rss_mb, 1),
+            "memory_in_use_mb": None if self.memory_in_use_mb is None else round(self.memory_in_use_mb, 1),
             "final_words": self.final_words,
             "stages": {k: round(v, 2) for k, v in self.stages.items()},
             "pages_detail": [p.as_dict() for p in self.page_timings],
@@ -153,7 +162,7 @@ class BenchmarkReport:
         }
 
     def as_dict(self) -> dict[str, Any]:
-        peaks = [d.peak_rss_mb for d in self.documents if d.peak_rss_mb is not None]
+        peaks = [d.memory_in_use_mb for d in self.documents if d.memory_in_use_mb is not None]
         return {
             "label": self.label,
             "settings": self.settings_summary,
@@ -164,7 +173,7 @@ class BenchmarkReport:
                 "pages_avoided": self.total_pages - self.total_ocr_pages,
                 "seconds": round(self.total_seconds, 2),
                 "pages_per_minute": round(self.pages_per_minute, 3),
-                "peak_rss_mb": round(max(peaks), 1) if peaks else None,
+                "memory_in_use_mb": round(max(peaks), 1) if peaks else None,
             },
             "page_seconds": self.percentiles(),
             "documents": [d.as_dict() for d in self.documents],
@@ -261,7 +270,7 @@ def benchmark_documents(
                 pages_avoided=result.routing.pages_avoided if result.routing else 0,
                 stages=stages,
                 page_timings=timings,
-                peak_rss_mb=_peak_rss_mb(),
+                memory_in_use_mb=_memory_in_use_mb(),
                 final_words=len(result.final_text.split()),
             )
         )

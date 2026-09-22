@@ -168,7 +168,7 @@ class TestReport:
 
     def test_peak_memory_is_none_rather_than_zero_when_unobserved(self):
         report = self._report()
-        assert report.as_dict()["totals"]["peak_rss_mb"] is None
+        assert report.as_dict()["totals"]["memory_in_use_mb"] is None
 
     def test_the_report_records_what_moved_the_number(self):
         summary = settings_summary(AppSettings())

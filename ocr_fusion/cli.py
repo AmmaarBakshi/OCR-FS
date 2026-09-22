@@ -433,8 +433,8 @@ def _print_bench_report(report: object) -> None:
     print(f"  {'pages avoided':<18} {totals['pages_avoided']}")
     print(f"  {'total time':<18} {format_duration(totals['seconds'])}")
     print(f"  {'pages / minute':<18} {totals['pages_per_minute']}")
-    peak = totals["peak_rss_mb"]
-    print(f"  {'peak RSS':<18} {'n/a' if peak is None else f'{peak} MB'}")
+    peak = totals["memory_in_use_mb"]
+    print(f"  {'memory in use':<18} {'n/a' if peak is None else f'{peak} MB'}")
 
     print("\n  per page (seconds)")
     for key in ("mean", "median", "p90", "p95", "max"):
