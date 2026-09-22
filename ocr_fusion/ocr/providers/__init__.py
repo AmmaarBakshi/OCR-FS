@@ -12,8 +12,15 @@ from __future__ import annotations
 
 from ocr_fusion.ocr.registry import ProviderSpec, default_registry, register_provider
 
-#: Stage order. The pipeline runs enabled providers in this sequence.
-PIPELINE_ORDER: tuple[str, ...] = ("qwen_vl", "unlimited_ocr", "tesseract")
+#: Stage order. The pipeline runs enabled providers in this sequence, and
+#: cheapest-first is deliberate: text-layer extraction answers most pages
+#: outright, so the vision models only ever see what it could not.
+PIPELINE_ORDER: tuple[str, ...] = (
+    "text_layer",
+    "qwen_vl",
+    "unlimited_ocr",
+    "tesseract",
+)
 
 
 def _register_builtin_providers() -> None:
@@ -23,10 +30,23 @@ def _register_builtin_providers() -> None:
     idempotent rather than raising on the second import.
     """
     from ocr_fusion.ocr.providers.qwen_vl import build_qwen_provider
+    from ocr_fusion.ocr.providers.text_layer import build_text_layer_provider
     from ocr_fusion.ocr.providers.tesseract import build_tesseract_provider
     from ocr_fusion.ocr.providers.unlimited import build_unlimited_provider
 
     specs = [
+        ProviderSpec(
+            provider_id="text_layer",
+            display_name="PDF text layer",
+            factory=build_text_layer_provider,
+            description=(
+                "Reads the text a PDF was authored with. No model, no "
+                "recognition and no inference cost - and on a born-digital "
+                "page the result is exact rather than transcribed."
+            ),
+            enabled_check=lambda s: s.text_layer.enabled,
+            tags=("extraction", "local", "free"),
+        ),
         ProviderSpec(
             provider_id="qwen_vl",
             display_name="Qwen2.5-VL",
