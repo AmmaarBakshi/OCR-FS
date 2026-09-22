@@ -17,14 +17,17 @@ caller depends on an interface, never on an implementation.**
 
 ```
 ocr_fusion/
-├── config/       settings schema, layered loading, prompt templates
-├── documents/    upload → Document (pages as PNG bytes)
+├── config/       settings schema, layered loading, prompts, speed profiles
+├── documents/    upload → Document (pages rendered on demand), text-layer gate
 ├── ocr/
 │   ├── interface.py    OCRProvider, OCRResult, PageResult, HealthStatus
 │   ├── registry.py     id → factory
-│   └── providers/      qwen_vl, unlimited/, tesseract
-├── pipeline/     executor, stages, comparison, fusion, result
-├── export/       TXT / Markdown / JSON / CSV
+│   ├── cache.py        provider wrapper: never read the same page twice
+│   └── providers/      text_layer, qwen_vl, unlimited/, tesseract
+├── pipeline/     routing, executor, confidence, comparison, fusion, result
+├── batch/        many documents, checkpointed and resumable
+├── bench/        timing and accuracy harness
+├── export/       TXT / Markdown / JSON / CSV / XML / HTML / PDF
 └── metrics/      display-ready values
 ```
 
@@ -36,31 +39,76 @@ ocr_fusion/
         bytes
           │
           ▼
-   ┌─────────────┐   sniff format, render pages, detect PDF text layer
-   │  documents  │
+   ┌─────────────┐   sniff format, read the PDF text layer, size the pages
+   │  documents  │   (pixels are NOT produced here - see "Nothing renders
+   └──────┬──────┘    until something looks" below)
+          │  Document(pages=[DocumentPage(number, embedded_text, render=…)])
+          ▼
+   ┌─────────────┐   per page: usable text layer? blank? already seen?
+   │   routing   │   cheap, deterministic, no model consulted
    └──────┬──────┘
-          │  Document(pages=[DocumentPage(number, image_bytes, ...)])
+          │  RoutingPlan(routes=[PageRoute(page, class, reason)])
           ▼
-   ┌─────────────┐   for each enabled provider, in registry order
-   │  pipeline   │────────────────┐
-   └──────┬──────┘                │
-          │                       ▼
-          │              ┌─────────────────┐
-          │              │  OCRProvider    │   health_check() then process()
-          │              └────────┬────────┘
-          │                       │  OCRResult(pages, tokens, timings)
-          │◀──────────────────────┘
+   ┌───────────────────────── cascade ─────────────────────────┐
+   │                                                            │
+   │   text_layer  ──▶ pages the document already answers       │
+   │        │                                                   │
+   │        ▼                                                   │
+   │   primary OCR ──▶ only the pages left over                 │
+   │        │                                                   │
+   │        ▼                                                   │
+   │   confidence  ──▶ empty? truncated? looping? too thin?     │
+   │        │                                                   │
+   │        ▼                                                   │
+   │   fallback    ──▶ only the pages that were flagged         │
+   │                                                            │
+   └──────┬─────────────────────────────────────────────────────┘
+          │  one OCRResult per engine, each covering its own pages
           ▼
-   ┌─────────────┐   align lines, score agreement, flag numeric conflicts
+   ┌─────────────┐   only the pages two engines both read
    │ comparison  │
    └──────┬──────┘
           ▼
-   ┌─────────────┐   choose or merge; never invent
+   ┌─────────────┐   assemble page by page; choose or merge; never invent
    │   fusion    │
    └──────┬──────┘
           ▼
-   PipelineResult ──▶ UI, exporters, metrics
+   PipelineResult ──▶ UI, exporters, metrics, review queue
 ```
+
+### Why this shape
+
+The old shape ran every enabled engine over every page. On the reference
+corpus that was almost entirely waste, and the measurements say so:
+
+| | |
+|---|---|
+| Pages in the corpus | 1,666 across 91 documents |
+| Pages that already carry their own text | 1,415 (84.9%) |
+| Cost of one 150 DPI page, `qwen2.5vl:3b`, this machine | ~491 s |
+| Of which: encoding the image (2,979 image tokens) | 416 s (85%) |
+| Of which: writing the answer (283 tokens at 4.85 tok/s) | 58 s (12%) |
+| Cost of reading that page's text layer instead | ~2 ms |
+
+Two conclusions follow, and the architecture is built on them.
+
+**The cheapest page is the one no model sees.** Hence routing first, and hence
+the ordering inside it: the text-layer test needs no pixels, so it runs before
+any test that does.
+
+**When a model must run, the image is the cost, not the answer.** Hence DPI as
+the primary tuning knob, and hence sending a fallback engine a list of flagged
+pages rather than a document.
+
+### Nothing renders until something looks
+
+`DocumentPage.image_bytes` is a property that rasterises on first access and
+keeps the result. Loading an 83-page born-digital PDF used to spend ~14 s
+drawing images that routing then never looked at; it now costs 0.68 s to load
+and 0.27 s to route, with zero pages rendered.
+
+This is why routing checks the text layer first: asking a page for its pixels
+is what renders it.
 
 `PipelineResult` is the single object everything downstream reads. Its
 `as_dict()` is the published JSON schema.
