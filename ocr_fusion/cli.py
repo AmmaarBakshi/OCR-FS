@@ -22,6 +22,7 @@ from ocr_fusion.documents import load_document
 from ocr_fusion.documents.errors import DocumentError
 from ocr_fusion.export import export_bytes
 from ocr_fusion.metrics import format_duration
+from ocr_fusion.ocr.registry import default_registry
 from ocr_fusion.pipeline import build_pipeline
 from ocr_fusion.version import __version__
 
@@ -68,11 +69,9 @@ def _apply_overrides(settings: AppSettings, args: argparse.Namespace) -> AppSett
     if args.max_pages is not None:
         settings.pipeline.max_pages = args.max_pages
     if args.engine:
-        # Only the named engines run.
-        settings.text_layer.enabled = "text_layer" in args.engine
-        settings.qwen.enabled = "qwen_vl" in args.engine
-        settings.unlimited_ocr.enabled = "unlimited_ocr" in args.engine
-        settings.tesseract.enabled = "tesseract" in args.engine
+        # Only the named engines run. Resolved through the registry, so an
+        # engine added by registering a spec is selectable here immediately.
+        default_registry.enable_only(args.engine, settings)
     return settings
 
 
@@ -480,8 +479,9 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument(
         "--engine",
         action="append",
-        choices=["text_layer", "qwen_vl", "unlimited_ocr", "tesseract"],
-        help="Run only this engine. Repeat for several.",
+        choices=default_registry.ids(),
+        help="Run only this engine. Repeat for several. The choices are the "
+        "registered engines, so 'providers' always lists what is accepted.",
     )
 
     sub = parser.add_subparsers(dest="command", required=True)
