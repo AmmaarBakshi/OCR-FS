@@ -25,6 +25,7 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 from ocr_fusion.config.schema import AppSettings, OutputFormat
+from ocr_fusion.metrics import NOT_AVAILABLE
 from ocr_fusion.pipeline.result import PipelineResult
 
 
@@ -34,7 +35,7 @@ def _metric(value: Any, suffix: str = "") -> str:
     The rule from spec s8: never fabricate a metric, never print 0 for unknown.
     """
     if value is None:
-        return "N/A"
+        return NOT_AVAILABLE
     if isinstance(value, float):
         return f"{value:.2f}{suffix}"
     return f"{value}{suffix}"
@@ -265,10 +266,13 @@ def export_csv(result: PipelineResult, settings: AppSettings) -> str:
                     if page and page.duration_seconds is not None
                     else ""
                 )
+            # A row with no page is an engine that failed before it read
+            # anything. It did not measure zero characters - it measured
+            # nothing, and the counts have to say so (spec s8).
             if output.show_character_count:
-                row["characters"] = page.character_count if page else 0
+                row["characters"] = page.character_count if page else NOT_AVAILABLE
             if output.show_word_count:
-                row["words"] = page.word_count if page else 0
+                row["words"] = page.word_count if page else NOT_AVAILABLE
             if output.show_token_usage:
                 row["input_tokens"] = (
                     page.tokens.input_tokens if page and page.tokens.input_tokens is not None else "N/A"

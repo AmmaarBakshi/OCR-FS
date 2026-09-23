@@ -385,6 +385,16 @@ class TestCsv:
         failed = next(r for r in rows if r["status"] == "failed")
         assert "no text" in failed["error"]
 
+    def test_engine_that_never_ran_reports_no_counts(self, run_result, settings):
+        run_result.engine_results.append(
+            OCRResult.failure("unlimited_ocr", "Unlimited-OCR", "ollama is not running")
+        )
+        row = next(
+            r for r in self._rows(run_result, settings) if r["engine"] == "Unlimited-OCR"
+        )
+        assert row["characters"] == NOT_AVAILABLE
+        assert row["words"] == NOT_AVAILABLE
+
     def test_columns_follow_output_settings(self, run_result, settings):
         settings.output.show_token_usage = False
         rows = self._rows(run_result, settings)
