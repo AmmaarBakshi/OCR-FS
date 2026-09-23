@@ -150,6 +150,26 @@ class TestRegistry:
         assert "qwen_vl" not in enabled
         assert "unlimited_ocr" in enabled
 
+    def test_enable_only_switches_the_rest_off(self, settings):
+        import ocr_fusion.ocr.providers  # noqa: F401
+
+        settings.tesseract.enabled = True
+        assert default_registry.enable_only(["qwen_vl"], settings) == []
+
+        enabled = {spec.provider_id for spec in default_registry.enabled_specs(settings)}
+        assert enabled == {"qwen_vl"}
+
+    def test_enable_only_rejects_an_unknown_id(self, settings):
+        import ocr_fusion.ocr.providers  # noqa: F401
+
+        with pytest.raises(KeyError, match="paddle"):
+            default_registry.enable_only(["paddle"], settings)
+
+    def test_a_spec_with_no_setter_reports_that_it_cannot_be_toggled(self, settings):
+        registry = ProviderRegistry()
+        registry.register(ProviderSpec("a", "A", lambda s: None))
+        assert registry.enable_only(["a"], settings) == ["a"]
+
     def test_factories_are_lazy(self):
         # Registering must never construct a provider or import torch.
         calls = []

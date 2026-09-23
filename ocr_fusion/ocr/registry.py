@@ -33,10 +33,22 @@ class ProviderSpec:
     enabled_check: Callable[[AppSettings], bool] | None = None
     """Reads the engine's own ``enabled`` flag out of settings."""
 
+    enable_setter: Callable[[AppSettings, bool], None] | None = None
+    """Writes that same flag. The counterpart to :attr:`enabled_check`, so a
+    caller holding nothing but a provider id can switch an engine on without
+    knowing which settings section it keeps its flag in."""
+
     tags: tuple[str, ...] = field(default_factory=tuple)
 
     def is_enabled(self, settings: AppSettings) -> bool:
         return True if self.enabled_check is None else bool(self.enabled_check(settings))
+
+    def set_enabled(self, settings: AppSettings, enabled: bool) -> bool:
+        """Switch this engine on or off. False if the spec cannot be toggled."""
+        if self.enable_setter is None:
+            return False
+        self.enable_setter(settings, enabled)
+        return True
 
 
 class ProviderRegistry:
@@ -89,6 +101,23 @@ class ProviderRegistry:
     def enabled_specs(self, settings: AppSettings) -> list[ProviderSpec]:
         """Specs whose engine is switched on in settings, in registration order."""
         return [spec for spec in self._specs.values() if spec.is_enabled(settings)]
+
+    def enable_only(self, provider_ids: Iterable[str], settings: AppSettings) -> list[str]:
+        """Enable exactly these engines and switch every other one off.
+
+        Returns the ids that could not be toggled, which is every spec that
+        registered no ``enable_setter``; the caller decides whether that is
+        worth reporting.
+        """
+        wanted = set(provider_ids)
+        unknown = sorted(wanted - set(self._specs))
+        if unknown:
+            raise KeyError(f"Unknown provider(s): {', '.join(unknown)}")
+        return [
+            spec.provider_id
+            for spec in self._specs.values()
+            if not spec.set_enabled(settings, spec.provider_id in wanted)
+        ]
 
     def describe(self) -> list[dict[str, Any]]:
         """Registry contents for the Settings UI and documentation."""

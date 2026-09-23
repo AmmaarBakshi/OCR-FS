@@ -45,6 +45,7 @@ def _register_builtin_providers() -> None:
                 "page the result is exact rather than transcribed."
             ),
             enabled_check=lambda s: s.text_layer.enabled,
+            enable_setter=lambda s, on: setattr(s.text_layer, "enabled", on),
             tags=("extraction", "local", "free"),
         ),
         ProviderSpec(
@@ -56,6 +57,7 @@ def _register_builtin_providers() -> None:
                 "reports exact token and timing metrics."
             ),
             enabled_check=lambda s: s.qwen.enabled,
+            enable_setter=lambda s, on: setattr(s.qwen, "enabled", on),
             tags=("vlm", "local", "ollama"),
         ),
         ProviderSpec(
@@ -68,6 +70,7 @@ def _register_builtin_providers() -> None:
                 "substitute model when no Unlimited-OCR runtime is available)."
             ),
             enabled_check=lambda s: s.unlimited_ocr.enabled,
+            enable_setter=lambda s, on: setattr(s.unlimited_ocr, "enabled", on),
             tags=("vlm", "pluggable"),
         ),
         ProviderSpec(
@@ -79,6 +82,7 @@ def _register_builtin_providers() -> None:
                 "that adding an engine needs no pipeline or UI change."
             ),
             enabled_check=lambda s: s.tesseract.enabled,
+            enable_setter=lambda s, on: setattr(s.tesseract, "enabled", on),
             tags=("classical", "local", "optional"),
         ),
     ]
