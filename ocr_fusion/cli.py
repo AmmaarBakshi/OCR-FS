@@ -307,12 +307,17 @@ def _print_batch_status(state: object) -> None:
             print(f"    {Path(job.source).name[:50]:<52} {job.error}")
 
 
-def _collect_documents(target: str, pattern: str = "*.pdf") -> list[Path]:
-    """Every document under ``target``, or just ``target`` if it is a file."""
-    path = Path(target)
-    if path.is_file():
-        return [path]
-    return sorted(path.rglob(pattern))
+def _collect_documents(target: str) -> list[Path]:
+    """Every supported document under ``target``, or ``target`` itself.
+
+    Shares the batch runner's collector rather than globbing ``*.pdf``: a
+    folder of scans is a benchmark corpus too, and benchmarking it silently
+    found nothing. One collector also means `bench` and `batch` can never
+    disagree about what counts as a document.
+    """
+    from ocr_fusion.batch import collect_documents
+
+    return collect_documents(Path(target))
 
 
 def command_bench(args: argparse.Namespace) -> int:
